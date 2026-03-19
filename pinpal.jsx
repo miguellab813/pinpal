@@ -1,9 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// ─────────────────────────────────────────────────────────────────────────
-// CONFIG — replace these two values after creating your Supabase project
-// ─────────────────────────────────────────────────────────────────────────
 const SUPABASE_URL  = "https://shpkomsojxelggdmaeog.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNocGtvbXNvanhlbGdnZG1hZW9nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MjQzMzUsImV4cCI6MjA4OTUwMDMzNX0.YZGOsS9xtBxZDQ3sBmzo-_n2rMYGwXW96z1rUczFvLg";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -29,21 +26,8 @@ const PRESETS = [
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────
-const uid     = () => Math.random().toString(36).slice(2,9);
 const fmt     = (d) => new Date(d).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
 const fmtDate = (d) => new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
-
-// ── Storage mode — localStorage when no real keys, Supabase when deployed ─
-const USE_LOCAL = SUPABASE_URL === "YOUR_SUPABASE_URL";
-
-// localStorage adapter — mirrors Supabase field names so components work identically
-const LS = {
-  get: (k) => { try { return JSON.parse(localStorage.getItem("pp_"+k))||[]; } catch { return []; } },
-  set: (k, v) => localStorage.setItem("pp_"+k, JSON.stringify(v)),
-};
-
-// Fake user for local mode
-const LOCAL_USER = { id:"local", email:"local@pinpal.app" };
 
 // ── CSV ───────────────────────────────────────────────────────────────────
 const escapeCSV = (v) => {
@@ -75,7 +59,6 @@ const Icon = ({name,size=20,color="currentColor"}) => {
     clock:    "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
     download: "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4",
     pin:      "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z",
-    user:     "M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2 M12 11a4 4 0 100-8 4 4 0 000 8z",
     logout:   "M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1",
     eye:      "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 100 6 3 3 0 000-6z",
     eyeoff:   "M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24 M1 1l22 22",
@@ -177,11 +160,17 @@ const BacStepper = ({value,onChange}) => {
   );
 };
 
+const Spinner = () => (
+  <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div style={{width:32,height:32,border:`3px solid ${T.border}`,borderTopColor:T.accent,borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
+  </div>
+);
+
 // ══════════════════════════════════════════════════════════════════════════
 // AUTH SCREEN
 // ══════════════════════════════════════════════════════════════════════════
 const AuthScreen = ({onAuth}) => {
-  const [mode,    setMode]    = useState("login"); // login | signup | reset
+  const [mode,    setMode]    = useState("login");
   const [email,   setEmail]   = useState("");
   const [pass,    setPass]    = useState("");
   const [showPw,  setShowPw]  = useState(false);
@@ -197,9 +186,9 @@ const AuthScreen = ({onAuth}) => {
         if(error) throw error;
         onAuth(data.user);
       } else if(mode==="signup") {
-        const {data,error} = await supabase.auth.signUp({email,password:pass});
+        const {error} = await supabase.auth.signUp({email,password:pass});
         if(error) throw error;
-        setInfo("Check your email to confirm your account, then log in.");
+        setInfo("Check your email to confirm your account, then sign in.");
         setMode("login");
       } else {
         const {error} = await supabase.auth.resetPasswordForEmail(email);
@@ -217,7 +206,6 @@ const AuthScreen = ({onAuth}) => {
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px 20px",fontFamily:"-apple-system,'SF Pro Display',BlinkMacSystemFont,sans-serif",colorScheme:"dark"}}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
-      {/* Logo */}
       <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12,marginBottom:40}}>
         <div style={{width:64,height:64,borderRadius:18,background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 0 40px ${T.accentDim}`}}>
           <Icon name="pin" size={32} color="#fff"/>
@@ -228,7 +216,6 @@ const AuthScreen = ({onAuth}) => {
         </div>
       </div>
 
-      {/* Card */}
       <div style={{width:"100%",maxWidth:380,background:T.surface,borderRadius:20,padding:"28px 24px",border:`1px solid ${T.border}`}}>
         <h2 style={{fontSize:20,fontWeight:800,color:T.text,margin:"0 0 20px",textAlign:"center"}}>
           {mode==="login"?"Welcome back":mode==="signup"?"Create account":"Reset password"}
@@ -257,7 +244,7 @@ const AuthScreen = ({onAuth}) => {
                   style={{width:"100%",boxSizing:"border-box",border:`1.5px solid ${T.border}`,borderRadius:10,padding:"10px 42px 10px 13px",fontSize:15,outline:"none",background:T.elevated,color:T.text,colorScheme:"dark"}}
                   onFocus={e=>e.target.style.borderColor=T.accent} onBlur={e=>e.target.style.borderColor=T.border}
                   onKeyDown={e=>e.key==="Enter"&&submit()}/>
-                <button onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",padding:4,color:T.textSub}}>
+                <button onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",padding:4}}>
                   <Icon name={showPw?"eyeoff":"eye"} size={17} color={T.textSub}/>
                 </button>
               </div>
@@ -281,126 +268,84 @@ const AuthScreen = ({onAuth}) => {
       </div>
 
       <p style={{marginTop:24,fontSize:12,color:T.textMute,textAlign:"center",maxWidth:300,lineHeight:1.6}}>
-        Your data is private and only visible to you. It is never shared with other users.
+        Your data is private and only visible to you.
       </p>
     </div>
   );
 };
 
 // ══════════════════════════════════════════════════════════════════════════
-// DATA HOOKS — dual mode: localStorage (preview) or Supabase (deployed)
+// DATA HOOKS — Supabase only, scoped to user via Row Level Security
 // ══════════════════════════════════════════════════════════════════════════
 const useVials = (userId) => {
-  const [vials,   setVialsState] = useState([]);
-  const [loading, setLoading]    = useState(true);
+  const [vials,   setVials]   = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     if(!userId) return;
-    if(USE_LOCAL) {
-      setVialsState(LS.get("vials"));
-      setLoading(false);
-      return;
-    }
     const {data} = await supabase.from("vials").select("*").order("created_at",{ascending:true});
-    setVialsState(data||[]);
+    setVials(data||[]);
     setLoading(false);
   },[userId]);
 
-  useEffect(()=>{load();},[load]);
+  useEffect(()=>{ load(); },[load]);
 
   const addVial = async (v) => {
-    const row = {id:uid(),user_id:userId,name:v.name,total_mg:+v.totalMg,remaining_mg:+v.totalMg,dot:v.dot||null,notes:v.notes||null,created_at:new Date().toISOString()};
-    if(USE_LOCAL) {
-      const next = [...LS.get("vials"), row];
-      LS.set("vials", next);
-      setVialsState(next);
-      return;
-    }
-    const {data} = await supabase.from("vials").insert({...row,id:undefined}).select().single();
-    if(data) setVialsState(s=>[...s,data]);
+    const {data} = await supabase.from("vials").insert({
+      user_id:userId, name:v.name, total_mg:+v.totalMg,
+      remaining_mg:+v.totalMg, dot:v.dot||null, notes:v.notes||null
+    }).select().single();
+    if(data) setVials(s=>[...s,data]);
   };
 
   const updateVial = async (id,v) => {
-    const row = {name:v.name,total_mg:+v.totalMg,remaining_mg:+v.remaining,dot:v.dot||null,notes:v.notes||null};
-    if(USE_LOCAL) {
-      const next = LS.get("vials").map(x=>x.id===id?{...x,...row}:x);
-      LS.set("vials", next);
-      setVialsState(next);
-      return;
-    }
-    await supabase.from("vials").update(row).eq("id",id);
-    setVialsState(s=>s.map(x=>x.id===id?{...x,...row}:x));
+    const patch = {name:v.name,total_mg:+v.totalMg,remaining_mg:+v.remaining,dot:v.dot||null,notes:v.notes||null};
+    await supabase.from("vials").update(patch).eq("id",id);
+    setVials(s=>s.map(x=>x.id===id?{...x,...patch}:x));
   };
 
   const deductVial = async (id,mgAmount) => {
     const vial = vials.find(x=>x.id===id);
     if(!vial) return;
-    const newRem = Math.max(0,+(vial.remaining_mg - mgAmount).toFixed(4));
-    if(USE_LOCAL) {
-      const next = LS.get("vials").map(x=>x.id===id?{...x,remaining_mg:newRem}:x);
-      LS.set("vials", next);
-      setVialsState(next);
-      return;
-    }
+    const newRem = Math.max(0,+(vial.remaining_mg-mgAmount).toFixed(4));
     await supabase.from("vials").update({remaining_mg:newRem}).eq("id",id);
-    setVialsState(s=>s.map(x=>x.id===id?{...x,remaining_mg:newRem}:x));
+    setVials(s=>s.map(x=>x.id===id?{...x,remaining_mg:newRem}:x));
   };
 
   const deleteVial = async (id) => {
-    if(USE_LOCAL) {
-      const next = LS.get("vials").filter(x=>x.id!==id);
-      LS.set("vials", next);
-      setVialsState(next);
-      return;
-    }
     await supabase.from("vials").delete().eq("id",id);
-    setVialsState(s=>s.filter(x=>x.id!==id));
+    setVials(s=>s.filter(x=>x.id!==id));
   };
 
-  return {vials,loading,addVial,updateVial,deductVial,deleteVial,reload:load};
+  return {vials,loading,addVial,updateVial,deductVial,deleteVial};
 };
 
 const useProtocols = (userId) => {
-  const [protocols, setProtos] = useState([]);
+  const [protocols, setProtocols] = useState([]);
 
   useEffect(()=>{
     if(!userId) return;
-    if(USE_LOCAL) { setProtos(LS.get("protocols")); return; }
-    supabase.from("protocols").select("*").order("created_at",{ascending:true}).then(({data})=>setProtos(data||[]));
+    supabase.from("protocols").select("*").order("created_at",{ascending:true})
+      .then(({data})=>setProtocols(data||[]));
   },[userId]);
 
   const addProto = async (p) => {
-    const row = {id:uid(),user_id:userId,name:p.name,type:p.type,frequency:p.frequency,start_date:p.startDate||null,end_date:p.endDate||null,active:true,doses:p.doses,notes:p.notes||null,created_at:new Date().toISOString()};
-    if(USE_LOCAL) {
-      const next = [...LS.get("protocols"), row];
-      LS.set("protocols", next);
-      setProtos(next);
-      return;
-    }
-    const {data} = await supabase.from("protocols").insert({...row,id:undefined}).select().single();
-    if(data) setProtos(s=>[...s,data]);
+    const {data} = await supabase.from("protocols").insert({
+      user_id:userId, name:p.name, type:p.type, frequency:p.frequency,
+      start_date:p.startDate||null, end_date:p.endDate||null,
+      active:true, doses:p.doses, notes:p.notes||null
+    }).select().single();
+    if(data) setProtocols(s=>[...s,data]);
   };
 
   const toggleProto = async (id,active) => {
-    if(USE_LOCAL) {
-      const next = LS.get("protocols").map(x=>x.id===id?{...x,active:!active}:x);
-      LS.set("protocols", next);
-      setProtos(next);
-      return;
-    }
     await supabase.from("protocols").update({active:!active}).eq("id",id);
-    setProtos(s=>s.map(x=>x.id===id?{...x,active:!active}:x));
+    setProtocols(s=>s.map(x=>x.id===id?{...x,active:!active}:x));
   };
 
   const deleteProto = async (id) => {
-    if(USE_LOCAL) {
-      const next = LS.get("protocols").filter(x=>x.id!==id);
-      LS.set("protocols", next);
-      setProtos(next);
-      return;
-    }
     await supabase.from("protocols").delete().eq("id",id);
-    setProtos(s=>s.filter(x=>x.id!==id));
+    setProtocols(s=>s.filter(x=>x.id!==id));
   };
 
   return {protocols,addProto,toggleProto,deleteProto};
@@ -411,29 +356,21 @@ const useLog = (userId) => {
 
   useEffect(()=>{
     if(!userId) return;
-    if(USE_LOCAL) { setEntries(LS.get("log")); return; }
-    supabase.from("injection_log").select("*").order("logged_at",{ascending:false}).then(({data})=>setEntries(data||[]));
+    supabase.from("injection_log").select("*").order("injected_at",{ascending:false})
+      .then(({data})=>setEntries(data||[]));
   },[userId]);
 
   const addEntry = async (e) => {
-    const row = {id:uid(),user_id:userId,vial_id:e.vialId,vial_name:e.vialName,vial_dot:e.vialDot||null,dose_mcg:e.doseMcg?+e.doseMcg:null,dose_iu:e.doseIU?+e.doseIU:null,dose_ml:e.doseML?+e.doseML:null,injected_at:new Date(e.timestamp).toISOString(),notes:e.notes||null,logged_at:new Date().toISOString()};
-    if(USE_LOCAL) {
-      const next = [row, ...LS.get("log")];
-      LS.set("log", next);
-      setEntries(next);
-      return;
-    }
-    const {data} = await supabase.from("injection_log").insert({...row,id:undefined}).select().single();
+    const {data} = await supabase.from("injection_log").insert({
+      user_id:userId, vial_id:e.vialId, vial_name:e.vialName, vial_dot:e.vialDot||null,
+      dose_mcg:e.doseMcg?+e.doseMcg:null, dose_iu:e.doseIU?+e.doseIU:null,
+      dose_ml:e.doseML?+e.doseML:null, injected_at:new Date(e.timestamp).toISOString(),
+      notes:e.notes||null
+    }).select().single();
     if(data) setEntries(s=>[data,...s]);
   };
 
   const deleteEntry = async (id) => {
-    if(USE_LOCAL) {
-      const next = LS.get("log").filter(x=>x.id!==id);
-      LS.set("log", next);
-      setEntries(next);
-      return;
-    }
     await supabase.from("injection_log").delete().eq("id",id);
     setEntries(s=>s.filter(x=>x.id!==id));
   };
@@ -508,11 +445,8 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
   const save = async () => {
     if(!form.name||!form.totalMg) return;
     setSaving(true);
-    if(editId) {
-      await updateVial(editId,form);
-    } else {
-      await addVial(form);
-    }
+    if(editId) await updateVial(editId,form);
+    else       await addVial(form);
     setSaving(false); setModal(false); setEditId(null); setForm(EMPTY);
   };
 
@@ -530,10 +464,16 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
         <Btn icon="plus" onClick={()=>{setEditId(null);setForm(EMPTY);setModal(true);}}>Add Vial</Btn>
       </div>
 
-      {vials.length===0 && <Card style={{textAlign:"center",padding:52}}><Icon name="box" size={40} color={T.textMute}/><p style={{color:T.textMute,marginTop:12,fontSize:14}}>No vials yet. Add your first one.</p></Card>}
+      {vials.length===0 && (
+        <Card style={{textAlign:"center",padding:52}}>
+          <Icon name="box" size={40} color={T.textMute}/>
+          <p style={{color:T.textMute,marginTop:12,fontSize:14}}>No vials yet. Add your first one.</p>
+        </Card>
+      )}
 
       {vials.map(v=>{
-        const p=pct(v); const barColor=p<25?T.red:p<50?T.amber:T.green;
+        const p=pct(v);
+        const barColor=p<25?T.red:p<50?T.amber:T.green;
         return (
           <Card key={v.id} style={{borderLeft:`3px solid ${v.dot||T.accent}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -581,10 +521,8 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
               </div>
             </div>
           )}
-
           <div style={{height:1,background:T.border}}/>
           <Input label="Peptide Name" placeholder="e.g. BPC-157" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/>
-
           <div>
             <label style={{fontSize:11,fontWeight:700,color:T.textSub,letterSpacing:.6,textTransform:"uppercase"}}>Dot Color</label>
             <div style={{display:"flex",gap:10,marginTop:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -595,7 +533,6 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
               <input type="color" value={form.dot||"#4f9eff"} onChange={e=>setForm(f=>({...f,dot:e.target.value}))} style={{width:26,height:26,padding:0,border:"none",borderRadius:"50%",cursor:"pointer",background:"transparent"}}/>
             </div>
           </div>
-
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <NumInput label="Total (mg)" placeholder="10" value={form.totalMg} onChange={e=>setForm(f=>({...f,totalMg:e.target.value}))}/>
             {editId && <NumInput label="Remaining (mg)" placeholder="10" value={form.remaining} onChange={e=>setForm(f=>({...f,remaining:e.target.value}))}/>}
@@ -614,7 +551,8 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
 const Protocols = ({vials,protocols,addProto,toggleProto,deleteProto}) => {
   const [modal,  setModal]  = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form,   setForm]   = useState({name:"",type:"single",startDate:"",endDate:"",frequency:"daily",doses:[{vialId:"",doseMcg:"",time:"08:00"}],notes:""});
+  const EMPTY = {name:"",type:"single",startDate:"",endDate:"",frequency:"daily",doses:[{vialId:"",doseMcg:"",time:"08:00"}],notes:""};
+  const [form, setForm] = useState(EMPTY);
 
   const addDose  = () => setForm(f=>({...f,doses:[...f.doses,{vialId:"",doseMcg:"",time:"08:00"}]}));
   const updDose  = (i,k,v) => setForm(f=>{const d=[...f.doses];d[i]={...d[i],[k]:v};return{...f,doses:d};});
@@ -624,8 +562,7 @@ const Protocols = ({vials,protocols,addProto,toggleProto,deleteProto}) => {
     if(!form.name) return;
     setSaving(true);
     await addProto(form);
-    setSaving(false); setModal(false);
-    setForm({name:"",type:"single",startDate:"",endDate:"",frequency:"daily",doses:[{vialId:"",doseMcg:"",time:"08:00"}],notes:""});
+    setSaving(false); setModal(false); setForm(EMPTY);
   };
 
   const freqLabel = {daily:"Every day",eod:"Every other day","3x":"3× / week","2x":"Twice daily"};
@@ -637,13 +574,17 @@ const Protocols = ({vials,protocols,addProto,toggleProto,deleteProto}) => {
         <Btn icon="plus" onClick={()=>setModal(true)}>New Protocol</Btn>
       </div>
 
-      {protocols.length===0 && <Card style={{textAlign:"center",padding:52}}><Icon name="calendar" size={40} color={T.textMute}/><p style={{color:T.textMute,marginTop:12,fontSize:14}}>No protocols yet.</p></Card>}
+      {protocols.length===0 && (
+        <Card style={{textAlign:"center",padding:52}}>
+          <Icon name="calendar" size={40} color={T.textMute}/>
+          <p style={{color:T.textMute,marginTop:12,fontSize:14}}>No protocols yet. Create your first cycle.</p>
+        </Card>
+      )}
 
       {protocols.map(p=>{
-        const vial0=vials.find(x=>x.id===p.doses?.[0]?.vialId);
-        const dotColor=vial0?.dot||T.accent;
+        const vial0 = vials.find(x=>x.id===p.doses?.[0]?.vialId);
         return (
-          <Card key={p.id} style={{opacity:p.active?1:.5,borderLeft:`3px solid ${dotColor}`}}>
+          <Card key={p.id} style={{opacity:p.active?1:.5,borderLeft:`3px solid ${vial0?.dot||T.accent}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:3}}>
@@ -719,11 +660,11 @@ const Log = ({vials,entries,addEntry,deleteEntry,deductVial}) => {
     const vial = vials.find(v=>v.id===form.vialId);
     if(vial && form.doseMcg) await deductVial(vial.id, parseFloat(form.doseMcg)/1000);
     await addEntry({...form, vialName:vial?.name||"Unknown", vialDot:vial?.dot||""});
-    setSaving(false); setModal(false); setForm(EMPTY);
+    setSaving(false); setModal(false); setForm({...EMPTY,timestamp:new Date().toISOString().slice(0,16)});
   };
 
   const grouped = entries.reduce((acc,e)=>{
-    const day = new Date(e.injected_at||e.logged_at).toDateString();
+    const day = new Date(e.injected_at).toDateString();
     if(!acc[day]) acc[day]=[];
     acc[day].push(e); return acc;
   },{});
@@ -735,7 +676,12 @@ const Log = ({vials,entries,addEntry,deleteEntry,deductVial}) => {
         <Btn icon="plus" onClick={()=>{setForm({...EMPTY,timestamp:new Date().toISOString().slice(0,16)});setModal(true);}}>Log Injection</Btn>
       </div>
 
-      {entries.length===0 && <Card style={{textAlign:"center",padding:52}}><Icon name="clock" size={40} color={T.textMute}/><p style={{color:T.textMute,marginTop:12,fontSize:14}}>No injections logged yet.</p></Card>}
+      {entries.length===0 && (
+        <Card style={{textAlign:"center",padding:52}}>
+          <Icon name="clock" size={40} color={T.textMute}/>
+          <p style={{color:T.textMute,marginTop:12,fontSize:14}}>No injections logged yet.</p>
+        </Card>
+      )}
 
       {Object.entries(grouped).map(([day,dayEntries])=>(
         <div key={day}>
@@ -821,10 +767,10 @@ const ExportModal = ({open,onClose,vials,protocols,entries}) => {
   const [done,setDone] = useState(false);
   const handle = () => {
     const ts = new Date().toISOString().slice(0,10);
-    const vialsCSV = toCSV(["ID","Name","Total (mg)","Remaining (mg)","% Left","Notes","Created"],vials.map(v=>[v.id,v.name,v.total_mg,v.remaining_mg,Math.round((v.remaining_mg/v.total_mg)*100),v.notes||"",fmtDate(v.created_at)]));
-    const protoCSV = toCSV(["ID","Name","Type","Frequency","Start","End","Active","Notes"],protocols.map(p=>[p.id,p.name,p.type,p.frequency,p.start_date||"",p.end_date||"",p.active?"Yes":"No",p.notes||""]));
-    const logCSV   = toCSV(["ID","Peptide","Dose (mcg)","IU","mL","Injected At","Notes"],entries.map(e=>[e.id,e.vial_name,e.dose_mcg||"",e.dose_iu||"",e.dose_ml||"",e.injected_at,e.notes||""]));
-    const combined = [`PinPal Export — ${ts}`,"","=== INVENTORY ===",vialsCSV,"","=== PROTOCOLS ===",protoCSV,"","=== INJECTION LOG ===",logCSV].join("\n");
+    const vialsCSV   = toCSV(["ID","Name","Total (mg)","Remaining (mg)","% Left","Notes","Created"],vials.map(v=>[v.id,v.name,v.total_mg,v.remaining_mg,Math.round((v.remaining_mg/v.total_mg)*100),v.notes||"",fmtDate(v.created_at)]));
+    const protoCSV   = toCSV(["ID","Name","Type","Frequency","Start","End","Active","Notes"],protocols.map(p=>[p.id,p.name,p.type,p.frequency,p.start_date||"",p.end_date||"",p.active?"Yes":"No",p.notes||""]));
+    const logCSV     = toCSV(["ID","Peptide","Dose (mcg)","IU","mL","Injected At","Notes"],entries.map(e=>[e.id,e.vial_name,e.dose_mcg||"",e.dose_iu||"",e.dose_ml||"",e.injected_at,e.notes||""]));
+    const combined   = [`PinPal Export — ${ts}`,"","=== INVENTORY ===",vialsCSV,"","=== PROTOCOLS ===",protoCSV,"","=== INJECTION LOG ===",logCSV].join("\n");
     downloadCSV(`pinpal-export-${ts}.csv`,combined);
     setDone(true); setTimeout(()=>{setDone(false);onClose();},1800);
   };
@@ -875,21 +821,10 @@ export default function App() {
   const {protocols,addProto,toggleProto,deleteProto}                         = useProtocols(user?.id);
   const {entries,addEntry,deleteEntry}                                        = useLog(user?.id);
 
-  const signOut = () => { if(USE_LOCAL) { setUser(null); } else { supabase.auth.signOut(); } };
+  const signOut = () => supabase.auth.signOut();
 
-  if(USE_LOCAL && !user) {
-    // Skip auth in local/preview mode — auto sign in as local user
-    setUser(LOCAL_USER);
-  }
-
-  if(!USE_LOCAL && authLoading) return (
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{width:32,height:32,border:`3px solid ${T.border}`,borderTopColor:T.accent,borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  );
-
-  if(!USE_LOCAL && !user) return <AuthScreen onAuth={setUser}/>;
+  if(authLoading) return <Spinner/>;
+  if(!user)       return <AuthScreen onAuth={setUser}/>;
 
   const lowCount = vials.filter(v=>(v.remaining_mg/v.total_mg)<0.25).length;
 
@@ -898,7 +833,6 @@ export default function App() {
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <ExportModal open={exportOpen} onClose={()=>setExportOpen(false)} vials={vials} protocols={protocols} entries={entries}/>
 
-      {/* Header */}
       <div style={{background:`${T.surface}f0`,backdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`,position:"sticky",top:0,zIndex:50}}>
         <div style={{maxWidth:520,margin:"0 auto",padding:"16px 18px 0"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
@@ -908,7 +842,7 @@ export default function App() {
               </div>
               <div>
                 <h1 style={{fontSize:22,fontWeight:900,letterSpacing:-.7,color:T.text,margin:0,lineHeight:1.1}}>PinPal</h1>
-                <p style={{fontSize:11,color:T.textMute,margin:0,letterSpacing:.3,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{USE_LOCAL ? "Preview mode" : user.email}</p>
+                <p style={{fontSize:11,color:T.textMute,margin:0,letterSpacing:.3,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.email}</p>
               </div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -921,11 +855,9 @@ export default function App() {
               <button onClick={()=>setExportOpen(true)} title="Export" style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                 <Icon name="download" size={16} color={T.textSub}/>
               </button>
-              {!USE_LOCAL && (
-                <button onClick={signOut} title="Sign out" style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
-                  <Icon name="logout" size={16} color={T.textSub}/>
-                </button>
-              )}
+              <button onClick={signOut} title="Sign out" style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                <Icon name="logout" size={16} color={T.textSub}/>
+              </button>
             </div>
           </div>
 
