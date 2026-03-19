@@ -17,13 +17,41 @@ const T = {
 
 // ── Presets ───────────────────────────────────────────────────────────────
 const PRESETS = [
-  { name:"BPC-157",     totalMg:10,  unit:"mg",    dot:"#1a7a3c" },
-  { name:"GHK-Cu",      totalMg:50,  unit:"mg",    dot:"#2255cc" },
-  { name:"Melanotan-1", totalMg:10,  unit:"mg",    dot:"#e07020" },
-  { name:"Tirzepatide", totalMg:10,  unit:"mg",    dot:"#e03030" },
-  { name:"Retatrutide", totalMg:10,  unit:"mg",    dot:"#e03030" },
-  { name:"L-Carnitine", totalMg:500, unit:"mg/mL", dot:"#e0c020" },
+  { name:"BPC-157",            totalMg:10,  unit:"mg",    dot:"#4caf72",  shape:"circle" },
+  { name:"TB-500",             totalMg:10,  unit:"mg",    dot:"#1a7a3c",  shape:"circle" },
+  { name:"GHK-Cu",             totalMg:50,  unit:"mg",    dot:"#2255cc",  shape:"circle" },
+  { name:"GLOW Blend",         totalMg:70,  unit:"mg",    dot:"rainbow",  shape:"square" },
+  { name:"Melanotan-1",        totalMg:10,  unit:"mg",    dot:"#e07020",  shape:"circle" },
+  { name:"CJC-1295 nDAC+Ipa",  totalMg:10,  unit:"mg",    dot:"#e8e8e8",  shape:"circle" },
+  { name:"Sermorelin",         totalMg:10,  unit:"mg",    dot:"#e8e8e8",  shape:"circle" },
+  { name:"Tesamorelin",        totalMg:10,  unit:"mg",    dot:"#e8e8e8",  shape:"circle" },
+  { name:"NAD+",               totalMg:500, unit:"mg",    dot:"#888888",  shape:"diamond"},
+  { name:"Tirzepatide",        totalMg:10,  unit:"mg",    dot:"#e03030",  shape:"circle" },
+  { name:"Retatrutide",        totalMg:10,  unit:"mg",    dot:"#e03030",  shape:"circle" },
+  { name:"L-Carnitine",        totalMg:500, unit:"mg/mL", dot:"#e0c020",  shape:"circle" },
 ];
+
+// ── Dot renderer — handles circle, square, diamond, rainbow ──────────────
+const DotIcon = ({dot,shape="circle",size=9}) => {
+  if(dot==="rainbow"){
+    return (
+      <span style={{
+        width:size+2,height:size+2,display:"inline-block",flexShrink:0,
+        background:"linear-gradient(135deg,#ff453a,#ff9f0a,#30d158,#4f9eff,#bf5af2)",
+        borderRadius:shape==="circle"?"50%":shape==="diamond"?"2px":"3px",
+        transform:shape==="diamond"?"rotate(45deg)":"none",
+      }}/>
+    );
+  }
+  return (
+    <span style={{
+      width:size,height:size,display:"inline-block",flexShrink:0,
+      background:dot,
+      borderRadius:shape==="circle"?"50%":shape==="diamond"?"2px":"3px",
+      transform:shape==="diamond"?"rotate(45deg)":"none",
+    }}/>
+  );
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 const fmt     = (d) => new Date(d).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
@@ -293,7 +321,10 @@ const useVials = (userId) => {
   const addVial = async (v) => {
     const {data,error} = await supabase.from("vials").insert({
       user_id:userId, name:v.name, total_mg:+v.totalMg,
-      remaining_mg:+v.totalMg, dot:v.dot||null, notes:v.notes||null
+      remaining_mg:+v.totalMg, dot:v.dot||null, notes:v.notes||null,
+      status:v.status||"powder",
+      bac_water_ml:v.bacWaterMl?+v.bacWaterMl:null,
+      shape:v.shape||"circle",
     }).select().single();
     if(error){
       console.error("addVial error:", JSON.stringify(error));
@@ -304,7 +335,13 @@ const useVials = (userId) => {
   };
 
   const updateVial = async (id,v) => {
-    const patch = {name:v.name,total_mg:+v.totalMg,remaining_mg:+v.remaining,dot:v.dot||null,notes:v.notes||null};
+    const patch = {
+      name:v.name, total_mg:+v.totalMg, remaining_mg:+v.remaining,
+      dot:v.dot||null, notes:v.notes||null,
+      status:v.status||"powder",
+      bac_water_ml:v.bacWaterMl?+v.bacWaterMl:null,
+      shape:v.shape||"circle",
+    };
     await supabase.from("vials").update(patch).eq("id",id);
     setVials(s=>s.map(x=>x.id===id?{...x,...patch}:x));
   };
@@ -440,13 +477,27 @@ const Calculator = () => {
 // ══════════════════════════════════════════════════════════════════════════
 // INVENTORY
 // ══════════════════════════════════════════════════════════════════════════
+const StatusTag = ({status}) => {
+  const isPowder = !status || status === "powder";
+  return (
+    <span style={{
+      fontSize:10, fontWeight:800, letterSpacing:.8, textTransform:"uppercase",
+      padding:"2px 7px", borderRadius:6,
+      background: isPowder ? "rgba(180,180,180,.15)" : "rgba(255,214,10,.15)",
+      color:       isPowder ? "#aaa"                  : "#ffd60a",
+      border:      isPowder ? "1px solid rgba(180,180,180,.2)" : "1px solid rgba(255,214,10,.25)",
+    }}>
+      {isPowder ? "Powder Only" : "Reconstituted"}
+    </span>
+  );
+};
+
 const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
   const [modal,  setModal]  = useState(false);
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
-  const EMPTY = {name:"",totalMg:"",remaining:"",dot:"",notes:""};
-  const [form, setForm] = useState(EMPTY);
-
+  const EMPTY = {name:"",totalMg:"",remaining:"",dot:"",shape:"circle",status:"powder",bacWaterMl:"",notes:""};
+  const [form, setForm]     = useState(EMPTY);
   const [saveError, setSaveError] = useState("");
 
   const save = async () => {
@@ -467,11 +518,26 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
   };
 
   const openEdit = (v) => {
-    setForm({name:v.name,totalMg:v.total_mg,remaining:v.remaining_mg,dot:v.dot||"",notes:v.notes||""});
+    setForm({
+      name:v.name, totalMg:v.total_mg, remaining:v.remaining_mg,
+      dot:v.dot||"", shape:v.shape||"circle",
+      status:v.status||"powder", bacWaterMl:v.bac_water_ml||"",
+      notes:v.notes||"",
+    });
     setEditId(v.id); setModal(true);
   };
 
   const pct = (v) => Math.max(0,Math.min(100,Math.round((v.remaining_mg/v.total_mg)*100)));
+
+  // Concentration helper — show mcg/mL for 5, 10, 20 IU draws
+  const concInfo = (v) => {
+    if(!v.bac_water_ml || !v.total_mg) return null;
+    const mcgPerMl = (v.total_mg * 1000) / v.bac_water_ml;
+    return [5,10,20].map(iu=>{
+      const ml = iu / 100;
+      return { iu, mcg: (mcgPerMl * ml).toFixed(1) };
+    });
+  };
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -490,22 +556,27 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
       {vials.map(v=>{
         const p=pct(v);
         const barColor=p<25?T.red:p<50?T.amber:T.green;
+        const conc=concInfo(v);
+        const dotColor = v.dot==="rainbow" ? "#bf5af2" : (v.dot||T.accent);
         return (
-          <Card key={v.id} style={{borderLeft:`3px solid ${v.dot||T.accent}`}}>
+          <Card key={v.id} style={{borderLeft:`3px solid ${dotColor}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                  {v.dot && <span style={{width:9,height:9,borderRadius:"50%",background:v.dot,display:"inline-block",flexShrink:0}}/>}
+                  {v.dot && <DotIcon dot={v.dot} shape={v.shape||"circle"} size={9}/>}
                   <span style={{fontSize:17,fontWeight:800,color:T.text}}>{v.name}</span>
+                  <StatusTag status={v.status}/>
                   {p<25 && <Badge bg={T.redDim} color={T.red}>Low Supply</Badge>}
                 </div>
                 <span style={{fontSize:13,color:T.textSub}}>{v.total_mg} mg total · added {fmtDate(v.created_at)}</span>
+                {v.bac_water_ml && <span style={{fontSize:12,color:T.textMute}}> · {v.bac_water_ml} mL BAC</span>}
               </div>
               <div style={{display:"flex",gap:6,marginLeft:8}}>
                 <button onClick={()=>openEdit(v)} style={{background:T.elevated,border:"none",borderRadius:8,padding:"7px 9px",cursor:"pointer"}}><Icon name="edit" size={15} color={T.textSub}/></button>
                 <button onClick={()=>deleteVial(v.id)} style={{background:T.redDim,border:"none",borderRadius:8,padding:"7px 9px",cursor:"pointer"}}><Icon name="trash" size={15} color={T.red}/></button>
               </div>
             </div>
+
             <div style={{marginTop:14}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
                 <span style={{fontSize:13,color:T.textSub}}>Remaining</span>
@@ -515,21 +586,36 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
                 <div style={{height:5,borderRadius:99,width:`${p}%`,background:barColor,transition:"width .5s ease"}}/>
               </div>
             </div>
+
+            {conc && (
+              <div style={{marginTop:12,display:"flex",gap:6}}>
+                {conc.map(c=>(
+                  <div key={c.iu} style={{flex:1,background:T.elevated,borderRadius:8,padding:"6px 0",textAlign:"center"}}>
+                    <div style={{fontSize:13,fontWeight:700,color:T.text}}>{c.mcg} mcg</div>
+                    <div style={{fontSize:10,color:T.textMute,marginTop:1}}>{c.iu} IU draw</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {v.notes && <p style={{marginTop:10,fontSize:13,color:T.textSub,marginBottom:0}}>{v.notes}</p>}
           </Card>
         );
       })}
 
-      <Modal open={modal} onClose={()=>setModal(false)} title={editId?"Edit Vial":"Add Vial"}>
+      <Modal open={modal} onClose={()=>{setModal(false);setSaveError("");}} title={editId?"Edit Vial":"Add Vial"}>
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+          {/* Quick Add presets */}
           {!editId && (
             <div>
               <label style={{fontSize:11,fontWeight:700,color:T.textSub,letterSpacing:.6,textTransform:"uppercase"}}>Quick Add</label>
               <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>
                 {PRESETS.map(p=>(
-                  <button key={p.name} onClick={()=>setForm(f=>({...f,name:p.name,totalMg:p.totalMg,dot:p.dot}))}
+                  <button key={p.name}
+                    onClick={()=>setForm(f=>({...f,name:p.name,totalMg:p.totalMg,dot:p.dot,shape:p.shape||"circle"}))}
                     style={{display:"flex",alignItems:"center",gap:6,background:form.name===p.name?T.accentDim:T.elevated,border:`1.5px solid ${form.name===p.name?T.accent:T.border}`,borderRadius:20,padding:"6px 12px",cursor:"pointer",transition:"all .15s"}}>
-                    <span style={{width:8,height:8,borderRadius:"50%",background:p.dot,flexShrink:0}}/>
+                    <DotIcon dot={p.dot} shape={p.shape||"circle"} size={8}/>
                     <span style={{fontSize:13,fontWeight:600,color:T.text,whiteSpace:"nowrap"}}>{p.name}</span>
                     <span style={{fontSize:11,color:T.textSub}}>{p.totalMg} {p.unit}</span>
                   </button>
@@ -537,23 +623,55 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
               </div>
             </div>
           )}
+
           <div style={{height:1,background:T.border}}/>
+
           <Input label="Peptide Name" placeholder="e.g. BPC-157" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/>
+
+          {/* Status toggle */}
+          <div>
+            <label style={{fontSize:11,fontWeight:700,color:T.textSub,letterSpacing:.6,textTransform:"uppercase"}}>Vial Status</label>
+            <div style={{display:"flex",gap:8,marginTop:8}}>
+              {["powder","reconstituted"].map(s=>(
+                <button key={s} onClick={()=>setForm(f=>({...f,status:s}))}
+                  style={{flex:1,padding:"10px",borderRadius:10,border:`1.5px solid ${form.status===s?(s==="powder"?"#888":T.amber):T.border}`,background:form.status===s?(s==="powder"?"rgba(180,180,180,.12)":"rgba(255,214,10,.1)"):"transparent",cursor:"pointer",transition:"all .15s"}}>
+                  <div style={{fontSize:13,fontWeight:700,color:form.status===s?(s==="powder"?"#ccc":T.amber):T.textSub,textTransform:"uppercase",letterSpacing:.6}}>
+                    {s==="powder"?"Powder Only":"Reconstituted"}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* BAC water — only shown when reconstituted */}
+          {form.status==="reconstituted" && (
+            <NumInput
+              label="BAC Water Added (mL)"
+              placeholder="e.g. 2"
+              value={form.bacWaterMl}
+              onChange={e=>setForm(f=>({...f,bacWaterMl:e.target.value}))}
+            />
+          )}
+
+          {/* Dot color */}
           <div>
             <label style={{fontSize:11,fontWeight:700,color:T.textSub,letterSpacing:.6,textTransform:"uppercase"}}>Dot Color</label>
             <div style={{display:"flex",gap:10,marginTop:8,alignItems:"center",flexWrap:"wrap"}}>
-              {["#1a7a3c","#2255cc","#e07020","#e03030","#e0c020","#8855dd","#4f9eff","#30d158"].map(c=>(
+              {["#4caf72","#1a7a3c","#2255cc","#e07020","#e03030","#e0c020","#888888","#e8e8e8","#4f9eff","#bf5af2"].map(c=>(
                 <button key={c} onClick={()=>setForm(f=>({...f,dot:c}))}
                   style={{width:26,height:26,borderRadius:"50%",background:c,border:form.dot===c?"3px solid #fff":"3px solid transparent",cursor:"pointer"}}/>
               ))}
-              <input type="color" value={form.dot||"#4f9eff"} onChange={e=>setForm(f=>({...f,dot:e.target.value}))} style={{width:26,height:26,padding:0,border:"none",borderRadius:"50%",cursor:"pointer",background:"transparent"}}/>
+              <input type="color" value={form.dot&&form.dot!=="rainbow"?form.dot:"#4f9eff"} onChange={e=>setForm(f=>({...f,dot:e.target.value}))} style={{width:26,height:26,padding:0,border:"none",borderRadius:"50%",cursor:"pointer",background:"transparent"}}/>
             </div>
           </div>
+
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <NumInput label="Total (mg)" placeholder="10" value={form.totalMg} onChange={e=>setForm(f=>({...f,totalMg:e.target.value}))}/>
             {editId && <NumInput label="Remaining (mg)" placeholder="10" value={form.remaining} onChange={e=>setForm(f=>({...f,remaining:e.target.value}))}/>}
           </div>
+
           <Input label="Notes (optional)" placeholder="Storage, source, batch…" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))}/>
+
           {saveError && (
             <div style={{background:T.redDim,border:`1px solid ${T.red}55`,borderRadius:10,padding:"10px 14px",display:"flex",gap:8,alignItems:"flex-start"}}>
               <Icon name="alert" size={15} color={T.red}/>
