@@ -291,11 +291,16 @@ const useVials = (userId) => {
   useEffect(()=>{ load(); },[load]);
 
   const addVial = async (v) => {
-    const {data} = await supabase.from("vials").insert({
+    const {data,error} = await supabase.from("vials").insert({
       user_id:userId, name:v.name, total_mg:+v.totalMg,
       remaining_mg:+v.totalMg, dot:v.dot||null, notes:v.notes||null
     }).select().single();
+    if(error){
+      console.error("addVial error:", JSON.stringify(error));
+      return { error };
+    }
     if(data) setVials(s=>[...s,data]);
+    return { data };
   };
 
   const updateVial = async (id,v) => {
@@ -442,12 +447,23 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
   const EMPTY = {name:"",totalMg:"",remaining:"",dot:"",notes:""};
   const [form, setForm] = useState(EMPTY);
 
+  const [saveError, setSaveError] = useState("");
+
   const save = async () => {
     if(!form.name||!form.totalMg) return;
-    setSaving(true);
-    if(editId) await updateVial(editId,form);
-    else       await addVial(form);
-    setSaving(false); setModal(false); setEditId(null); setForm(EMPTY);
+    setSaving(true); setSaveError("");
+    if(editId){
+      await updateVial(editId,form);
+      setSaving(false); setModal(false); setEditId(null); setForm(EMPTY);
+    } else {
+      const result = await addVial(form);
+      setSaving(false);
+      if(result?.error){
+        setSaveError(result.error.message + " [" + result.error.code + "]");
+      } else {
+        setModal(false); setEditId(null); setForm(EMPTY); setSaveError("");
+      }
+    }
   };
 
   const openEdit = (v) => {
@@ -538,6 +554,15 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
             {editId && <NumInput label="Remaining (mg)" placeholder="10" value={form.remaining} onChange={e=>setForm(f=>({...f,remaining:e.target.value}))}/>}
           </div>
           <Input label="Notes (optional)" placeholder="Storage, source, batch…" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))}/>
+          {saveError && (
+            <div style={{background:T.redDim,border:`1px solid ${T.red}55`,borderRadius:10,padding:"10px 14px",display:"flex",gap:8,alignItems:"flex-start"}}>
+              <Icon name="alert" size={15} color={T.red}/>
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:T.red,marginBottom:2}}>Failed to save vial</div>
+                <div style={{fontSize:12,color:T.red,opacity:.85,fontFamily:"monospace"}}>{saveError}</div>
+              </div>
+            </div>
+          )}
           <Btn loading={saving} style={{width:"100%",justifyContent:"center"}} icon="check" onClick={save}>{editId?"Save Changes":"Add Vial"}</Btn>
         </div>
       </Modal>
