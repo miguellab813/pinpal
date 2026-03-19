@@ -33,6 +33,18 @@ const uid     = () => Math.random().toString(36).slice(2,9);
 const fmt     = (d) => new Date(d).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
 const fmtDate = (d) => new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
 
+// ── Storage mode — localStorage when no real keys, Supabase when deployed ─
+const USE_LOCAL = SUPABASE_URL === "YOUR_SUPABASE_URL";
+
+// localStorage adapter — mirrors Supabase field names so components work identically
+const LS = {
+  get: (k) => { try { return JSON.parse(localStorage.getItem("pp_"+k))||[]; } catch { return []; } },
+  set: (k, v) => localStorage.setItem("pp_"+k, JSON.stringify(v)),
+};
+
+// Fake user for local mode
+const LOCAL_USER = { id:"local", email:"local@pinpal.app" };
+
 // ── CSV ───────────────────────────────────────────────────────────────────
 const escapeCSV = (v) => {
   if(v===null||v===undefined) return "";
@@ -276,7 +288,7 @@ const AuthScreen = ({onAuth}) => {
 };
 
 // ══════════════════════════════════════════════════════════════════════════
-// DATA HOOKS — all queries scoped to user_id via RLS
+// DATA HOOKS — dual mode: localStorage (preview) or Supabase (deployed)
 // ══════════════════════════════════════════════════════════════════════════
 const useVials = (userId) => {
   const [vials,   setVialsState] = useState([]);
@@ -284,6 +296,11 @@ const useVials = (userId) => {
 
   const load = useCallback(async () => {
     if(!userId) return;
+    if(USE_LOCAL) {
+      setVialsState(LS.get("vials"));
+      setLoading(false);
+      return;
+    }
     const {data} = await supabase.from("vials").select("*").order("created_at",{ascending:true});
     setVialsState(data||[]);
     setLoading(false);
@@ -292,66 +309,135 @@ const useVials = (userId) => {
   useEffect(()=>{load();},[load]);
 
   const addVial = async (v) => {
-    const row = {user_id:userId,name:v.name,total_mg:+v.totalMg,remaining_mg:+v.totalMg,dot:v.dot||null,notes:v.notes||null};
-    const {data} = await supabase.from("vials").insert(row).select().single();
+    const row = {id:uid(),user_id:userId,name:v.name,total_mg:+v.totalMg,remaining_mg:+v.totalMg,dot:v.dot||null,notes:v.notes||null,created_at:new Date().toISOString()};
+    if(USE_LOCAL) {
+      const next = [...LS.get("vials"), row];
+      LS.set("vials", next);
+      setVialsState(next);
+      return;
+    }
+    const {data} = await supabase.from("vials").insert({...row,id:undefined}).select().single();
     if(data) setVialsState(s=>[...s,data]);
   };
+
   const updateVial = async (id,v) => {
     const row = {name:v.name,total_mg:+v.totalMg,remaining_mg:+v.remaining,dot:v.dot||null,notes:v.notes||null};
+    if(USE_LOCAL) {
+      const next = LS.get("vials").map(x=>x.id===id?{...x,...row}:x);
+      LS.set("vials", next);
+      setVialsState(next);
+      return;
+    }
     await supabase.from("vials").update(row).eq("id",id);
     setVialsState(s=>s.map(x=>x.id===id?{...x,...row}:x));
   };
+
   const deductVial = async (id,mgAmount) => {
     const vial = vials.find(x=>x.id===id);
     if(!vial) return;
     const newRem = Math.max(0,+(vial.remaining_mg - mgAmount).toFixed(4));
+    if(USE_LOCAL) {
+      const next = LS.get("vials").map(x=>x.id===id?{...x,remaining_mg:newRem}:x);
+      LS.set("vials", next);
+      setVialsState(next);
+      return;
+    }
     await supabase.from("vials").update({remaining_mg:newRem}).eq("id",id);
     setVialsState(s=>s.map(x=>x.id===id?{...x,remaining_mg:newRem}:x));
   };
+
   const deleteVial = async (id) => {
+    if(USE_LOCAL) {
+      const next = LS.get("vials").filter(x=>x.id!==id);
+      LS.set("vials", next);
+      setVialsState(next);
+      return;
+    }
     await supabase.from("vials").delete().eq("id",id);
     setVialsState(s=>s.filter(x=>x.id!==id));
   };
+
   return {vials,loading,addVial,updateVial,deductVial,deleteVial,reload:load};
 };
 
 const useProtocols = (userId) => {
   const [protocols, setProtos] = useState([]);
+
   useEffect(()=>{
     if(!userId) return;
+    if(USE_LOCAL) { setProtos(LS.get("protocols")); return; }
     supabase.from("protocols").select("*").order("created_at",{ascending:true}).then(({data})=>setProtos(data||[]));
   },[userId]);
+
   const addProto = async (p) => {
-    const row = {user_id:userId,name:p.name,type:p.type,frequency:p.frequency,start_date:p.startDate||null,end_date:p.endDate||null,active:true,doses:p.doses,notes:p.notes||null};
-    const {data} = await supabase.from("protocols").insert(row).select().single();
+    const row = {id:uid(),user_id:userId,name:p.name,type:p.type,frequency:p.frequency,start_date:p.startDate||null,end_date:p.endDate||null,active:true,doses:p.doses,notes:p.notes||null,created_at:new Date().toISOString()};
+    if(USE_LOCAL) {
+      const next = [...LS.get("protocols"), row];
+      LS.set("protocols", next);
+      setProtos(next);
+      return;
+    }
+    const {data} = await supabase.from("protocols").insert({...row,id:undefined}).select().single();
     if(data) setProtos(s=>[...s,data]);
   };
+
   const toggleProto = async (id,active) => {
+    if(USE_LOCAL) {
+      const next = LS.get("protocols").map(x=>x.id===id?{...x,active:!active}:x);
+      LS.set("protocols", next);
+      setProtos(next);
+      return;
+    }
     await supabase.from("protocols").update({active:!active}).eq("id",id);
     setProtos(s=>s.map(x=>x.id===id?{...x,active:!active}:x));
   };
+
   const deleteProto = async (id) => {
+    if(USE_LOCAL) {
+      const next = LS.get("protocols").filter(x=>x.id!==id);
+      LS.set("protocols", next);
+      setProtos(next);
+      return;
+    }
     await supabase.from("protocols").delete().eq("id",id);
     setProtos(s=>s.filter(x=>x.id!==id));
   };
+
   return {protocols,addProto,toggleProto,deleteProto};
 };
 
 const useLog = (userId) => {
   const [entries, setEntries] = useState([]);
+
   useEffect(()=>{
     if(!userId) return;
+    if(USE_LOCAL) { setEntries(LS.get("log")); return; }
     supabase.from("injection_log").select("*").order("logged_at",{ascending:false}).then(({data})=>setEntries(data||[]));
   },[userId]);
+
   const addEntry = async (e) => {
-    const row = {user_id:userId,vial_id:e.vialId,vial_name:e.vialName,vial_dot:e.vialDot||null,dose_mcg:e.doseMcg?+e.doseMcg:null,dose_iu:e.doseIU?+e.doseIU:null,dose_ml:e.doseML?+e.doseML:null,injected_at:new Date(e.timestamp).toISOString(),notes:e.notes||null};
-    const {data} = await supabase.from("injection_log").insert(row).select().single();
+    const row = {id:uid(),user_id:userId,vial_id:e.vialId,vial_name:e.vialName,vial_dot:e.vialDot||null,dose_mcg:e.doseMcg?+e.doseMcg:null,dose_iu:e.doseIU?+e.doseIU:null,dose_ml:e.doseML?+e.doseML:null,injected_at:new Date(e.timestamp).toISOString(),notes:e.notes||null,logged_at:new Date().toISOString()};
+    if(USE_LOCAL) {
+      const next = [row, ...LS.get("log")];
+      LS.set("log", next);
+      setEntries(next);
+      return;
+    }
+    const {data} = await supabase.from("injection_log").insert({...row,id:undefined}).select().single();
     if(data) setEntries(s=>[data,...s]);
   };
+
   const deleteEntry = async (id) => {
+    if(USE_LOCAL) {
+      const next = LS.get("log").filter(x=>x.id!==id);
+      LS.set("log", next);
+      setEntries(next);
+      return;
+    }
     await supabase.from("injection_log").delete().eq("id",id);
     setEntries(s=>s.filter(x=>x.id!==id));
   };
+
   return {entries,addEntry,deleteEntry};
 };
 
@@ -789,16 +875,21 @@ export default function App() {
   const {protocols,addProto,toggleProto,deleteProto}                         = useProtocols(user?.id);
   const {entries,addEntry,deleteEntry}                                        = useLog(user?.id);
 
-  const signOut = () => supabase.auth.signOut();
+  const signOut = () => { if(USE_LOCAL) { setUser(null); } else { supabase.auth.signOut(); } };
 
-  if(authLoading) return (
+  if(USE_LOCAL && !user) {
+    // Skip auth in local/preview mode — auto sign in as local user
+    setUser(LOCAL_USER);
+  }
+
+  if(!USE_LOCAL && authLoading) return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{width:32,height:32,border:`3px solid ${T.border}`,borderTopColor:T.accent,borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 
-  if(!user) return <AuthScreen onAuth={setUser}/>;
+  if(!USE_LOCAL && !user) return <AuthScreen onAuth={setUser}/>;
 
   const lowCount = vials.filter(v=>(v.remaining_mg/v.total_mg)<0.25).length;
 
@@ -817,7 +908,7 @@ export default function App() {
               </div>
               <div>
                 <h1 style={{fontSize:22,fontWeight:900,letterSpacing:-.7,color:T.text,margin:0,lineHeight:1.1}}>PinPal</h1>
-                <p style={{fontSize:11,color:T.textMute,margin:0,letterSpacing:.3,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.email}</p>
+                <p style={{fontSize:11,color:T.textMute,margin:0,letterSpacing:.3,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{USE_LOCAL ? "Preview mode" : user.email}</p>
               </div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -830,9 +921,11 @@ export default function App() {
               <button onClick={()=>setExportOpen(true)} title="Export" style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                 <Icon name="download" size={16} color={T.textSub}/>
               </button>
-              <button onClick={signOut} title="Sign out" style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
-                <Icon name="logout" size={16} color={T.textSub}/>
-              </button>
+              {!USE_LOCAL && (
+                <button onClick={signOut} title="Sign out" style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                  <Icon name="logout" size={16} color={T.textSub}/>
+                </button>
+              )}
             </div>
           </div>
 
