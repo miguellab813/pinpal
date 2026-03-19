@@ -91,6 +91,7 @@ const Icon = ({name,size=20,color="currentColor"}) => {
     logout:   "M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1",
     eye:      "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 100 6 3 3 0 000-6z",
     eyeoff:   "M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24 M1 1l22 22",
+    dollar:   "M12 2v20M17 5H9.5a3.5 3.5 0 100 7h5a3.5 3.5 0 110 7H6",
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -330,6 +331,7 @@ const useVials = (userId) => {
       shape:v.shape||"circle",
       standard_dose_iu:v.standardDoseIu?+v.standardDoseIu:null,
       dose_unit:v.doseUnit||"mcg",
+      cost_paid:v.costPaid?+v.costPaid:null,
     }).select().single();
     if(error){
       console.error("addVial error:", JSON.stringify(error));
@@ -348,6 +350,7 @@ const useVials = (userId) => {
       shape:v.shape||"circle",
       standard_dose_iu:v.standardDoseIu?+v.standardDoseIu:null,
       dose_unit:v.doseUnit||"mcg",
+      cost_paid:v.costPaid?+v.costPaid:null,
     };
     await supabase.from("vials").update(patch).eq("id",id);
     setVials(s=>s.map(x=>x.id===id?{...x,...patch}:x));
@@ -503,7 +506,7 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
   const [modal,  setModal]  = useState(false);
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
-  const EMPTY = {name:"",totalMg:"",remaining:"",dot:"",shape:"circle",status:"powder",bacWaterMl:"",standardDoseIu:"10",doseUnit:"mcg",doseAmount:"",notes:""};
+  const EMPTY = {name:"",totalMg:"",remaining:"",dot:"",shape:"circle",status:"powder",bacWaterMl:"",standardDoseIu:"10",doseUnit:"mcg",doseAmount:"",costPaid:"",notes:""};
   const [form, setForm]     = useState(EMPTY);
   const [saveError, setSaveError] = useState("");
 
@@ -529,7 +532,7 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
       name:v.name, totalMg:v.total_mg, remaining:v.remaining_mg,
       dot:v.dot||"", shape:v.shape||"circle",
       status:v.status||"powder", bacWaterMl:v.bac_water_ml||"",
-      standardDoseIu:v.standard_dose_iu||"10", doseUnit:v.dose_unit||"mcg", doseAmount:"",
+      standardDoseIu:v.standard_dose_iu||"10", doseUnit:v.dose_unit||"mcg", doseAmount:"", costPaid:v.cost_paid||"",
       notes:v.notes||"",
     });
     setEditId(v.id); setModal(true);
@@ -784,6 +787,7 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
             );
           })()}
 
+          <NumInput label="Cost Paid (optional, $)" placeholder="e.g. 45.00" value={form.costPaid} onChange={e=>setForm(f=>({...f,costPaid:e.target.value}))}/>
           <Input label="Notes (optional)" placeholder="Storage, source, batch…" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))}/>
 
           {saveError && (
@@ -908,7 +912,13 @@ const Protocols = ({vials,protocols,addProto,toggleProto,deleteProto}) => {
 const Log = ({vials,entries,addEntry,deleteEntry,deductVial}) => {
   const [modal,  setModal]  = useState(false);
   const [saving, setSaving] = useState(false);
-  const EMPTY = {vialId:"",doseMcg:"",doseIU:"10",doseML:"",timestamp:new Date().toISOString().slice(0,16),notes:""};
+  // local datetime string for datetime-local inputs (uses user's device timezone)
+const localNow = () => {
+  const d = new Date();
+  const pad = n => String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+const EMPTY = {vialId:"",doseMcg:"",doseIU:"10",doseML:"",timestamp:localNow(),notes:""};
   const [form, setForm] = useState(EMPTY);
 
   const logEntry = async () => {
@@ -932,7 +942,7 @@ const Log = ({vials,entries,addEntry,deleteEntry,deductVial}) => {
       vialName:vial?.name||"Unknown",
       vialDot: vial?.dot||"",
     });
-    setSaving(false); setModal(false); setForm({...EMPTY,timestamp:new Date().toISOString().slice(0,16)});
+    setSaving(false); setModal(false); setForm({...EMPTY,timestamp:localNow()});
   };
 
   const grouped = entries.reduce((acc,e)=>{
@@ -945,7 +955,7 @@ const Log = ({vials,entries,addEntry,deleteEntry,deductVial}) => {
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <span style={{fontSize:13,color:T.textSub}}>{entries.length} injection{entries.length!==1?"s":""} logged</span>
-        <Btn icon="plus" onClick={()=>{setForm({...EMPTY,timestamp:new Date().toISOString().slice(0,16)});setModal(true);}}>Log Injection</Btn>
+        <Btn icon="plus" onClick={()=>{setForm({...EMPTY,timestamp:localNow()});setModal(true);}}>Log Injection</Btn>
       </div>
 
       {entries.length===0 && (
@@ -989,7 +999,17 @@ const Log = ({vials,entries,addEntry,deleteEntry,deductVial}) => {
 
       <Modal open={modal} onClose={()=>setModal(false)} title="Log Injection">
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <Sel label="Peptide" value={form.vialId} onChange={e=>setForm(f=>({...f,vialId:e.target.value}))} options={[{value:"",label:"Select vial…"},...vials.map(v=>({value:v.id,label:`${v.name} (${v.remaining_mg} mg left)`}))]}/>
+          {/* Only reconstituted vials can be injected */}
+          <Sel label="Peptide" value={form.vialId} onChange={e=>setForm(f=>({...f,vialId:e.target.value}))}
+            options={[{value:"",label:"Select vial…"},...vials
+              .filter(v=>v.status==="reconstituted")
+              .map(v=>({value:v.id,label:`${v.name} (${v.remaining_mg} mg left)`}))
+            ]}/>
+          {vials.filter(v=>v.status==="reconstituted").length===0 && (
+            <div style={{background:"rgba(255,214,10,.08)",border:"1px solid rgba(255,214,10,.25)",borderRadius:10,padding:"10px 14px"}}>
+              <span style={{fontSize:13,color:T.tip}}>⚠ No reconstituted vials yet. Reconstitute a vial in Inventory before logging an injection.</span>
+            </div>
+          )}
 
           {/* IU stepper — only input needed */}
           <div style={{background:T.elevated,borderRadius:14,padding:"14px 14px 16px",border:`1px solid ${T.border}`}}>
@@ -1074,11 +1094,151 @@ const ExportModal = ({open,onClose,vials,protocols,entries}) => {
 // ══════════════════════════════════════════════════════════════════════════
 // ROOT
 // ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// COST MODULE
+// ══════════════════════════════════════════════════════════════════════════
+const Cost = ({vials, updateVial}) => {
+  const [editId,  setEditId]  = useState(null);
+  const [editVal, setEditVal] = useState("");
+  const [saving,  setSaving]  = useState(false);
+
+  const saveCost = async (v) => {
+    setSaving(true);
+    await updateVial(v.id, {
+      name:v.name, totalMg:v.total_mg, remaining:v.remaining_mg,
+      dot:v.dot, shape:v.shape||"circle", status:v.status||"powder",
+      bacWaterMl:v.bac_water_ml, standardDoseIu:v.standard_dose_iu,
+      doseUnit:v.dose_unit||"mcg", notes:v.notes,
+      costPaid: editVal ? +editVal : null,
+    });
+    setSaving(false); setEditId(null); setEditVal("");
+  };
+
+  // Cost per dose calculation
+  const cpd = (v) => {
+    if(!v.cost_paid || !v.total_mg) return null;
+    if(v.status === "reconstituted" && v.standard_dose_iu && v.bac_water_ml) {
+      const mcgPerMl  = (v.total_mg * 1000) / v.bac_water_ml;
+      const mlPerDose = v.standard_dose_iu / 100;
+      const doseAmtMcg = mcgPerMl * mlPerDose;
+      const totalDoses = (v.total_mg * 1000) / doseAmtMcg;
+      return totalDoses > 0 ? v.cost_paid / totalDoses : null;
+    }
+    return null;
+  };
+
+  // Total inventory value = sum of all vials with cost
+  const totalValue = vials.reduce((sum, v) => sum + (v.cost_paid || 0), 0);
+
+  // Remaining value = cost * (remaining_mg / total_mg)
+  const remainingValue = vials.reduce((sum, v) => {
+    if(!v.cost_paid) return sum;
+    return sum + v.cost_paid * (v.remaining_mg / v.total_mg);
+  }, 0);
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+
+      {/* Summary banner */}
+      <Card style={{background:"linear-gradient(135deg,#1a2a1a,#1a1a2a)",borderColor:"rgba(79,158,255,.2)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div>
+            <div style={{fontSize:11,fontWeight:700,color:T.textSub,letterSpacing:.7,textTransform:"uppercase",marginBottom:4}}>Inventory Value</div>
+            <div style={{fontSize:30,fontWeight:900,color:T.text,letterSpacing:-1}}>${totalValue.toFixed(2)}</div>
+            <div style={{fontSize:12,color:T.textSub,marginTop:2}}>total paid across {vials.filter(v=>v.cost_paid).length} vial{vials.filter(v=>v.cost_paid).length!==1?"s":""}</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.textSub,letterSpacing:.7,textTransform:"uppercase",marginBottom:4}}>Remaining</div>
+            <div style={{fontSize:24,fontWeight:800,color:T.green,letterSpacing:-.5}}>${remainingValue.toFixed(2)}</div>
+            <div style={{fontSize:12,color:T.textSub,marginTop:2}}>est. value left</div>
+          </div>
+        </div>
+      </Card>
+
+      {vials.length === 0 && (
+        <Card style={{textAlign:"center",padding:48}}>
+          <Icon name="dollar" size={38} color={T.textMute}/>
+          <p style={{color:T.textSub,marginTop:12,fontSize:14}}>Add vials in Inventory first.</p>
+        </Card>
+      )}
+
+      {/* Vial rows */}
+      {vials.map(v => {
+        const c    = cpd(v);
+        const pct  = Math.max(0,Math.min(100,Math.round((v.remaining_mg/v.total_mg)*100)));
+        const bar  = pct<25?T.red:pct<50?T.amber:T.green;
+        const isEditing = editId === v.id;
+
+        return (
+          <Card key={v.id} style={{padding:"14px 16px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              {v.dot && <DotIcon dot={v.dot} shape={v.shape||"circle"} size={9}/>}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
+                  <span style={{fontSize:15,fontWeight:800,color:T.text}}>{v.name}</span>
+                  <StatusTag status={v.status}/>
+                </div>
+                {/* Mini progress bar */}
+                <div style={{marginTop:5,height:3,background:T.elevated,borderRadius:99}}>
+                  <div style={{height:3,borderRadius:99,width:`${pct}%`,background:bar}}/>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+                  <span style={{fontSize:11,color:T.textSub}}>{v.remaining_mg} mg left ({pct}%)</span>
+                  {c && <span style={{fontSize:11,color:T.tip,fontWeight:700}}>${c.toFixed(2)} / dose</span>}
+                </div>
+              </div>
+
+              {/* Cost display / edit */}
+              <div style={{display:"flex",alignItems:"center",gap:8,marginLeft:4}}>
+                {isEditing ? (
+                  <>
+                    <div style={{display:"flex",alignItems:"center",background:T.elevated,borderRadius:8,border:`1.5px solid ${T.accent}`,overflow:"hidden"}}>
+                      <span style={{paddingLeft:10,fontSize:14,color:T.textSub}}>$</span>
+                      <input
+                        type="number" inputMode="decimal" autoFocus
+                        value={editVal}
+                        onChange={e=>setEditVal(e.target.value)}
+                        style={{width:70,padding:"8px 8px",fontSize:14,background:"transparent",border:"none",outline:"none",color:T.text,colorScheme:"dark"}}
+                      />
+                    </div>
+                    <button onClick={()=>saveCost(v)} disabled={saving}
+                      style={{background:T.green,border:"none",borderRadius:8,padding:"8px 10px",cursor:"pointer",display:"flex",alignItems:"center"}}>
+                      <Icon name="check" size={14} color="#000"/>
+                    </button>
+                    <button onClick={()=>{setEditId(null);setEditVal("");}}
+                      style={{background:T.elevated,border:"none",borderRadius:8,padding:"8px 10px",cursor:"pointer"}}>
+                      <Icon name="x" size={14} color={T.textSub}/>
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={()=>{setEditId(v.id);setEditVal(v.cost_paid||"");}}
+                    style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                    {v.cost_paid
+                      ? <span style={{fontSize:14,fontWeight:700,color:T.text}}>${(+v.cost_paid).toFixed(2)}</span>
+                      : <span style={{fontSize:13,color:T.textSub}}>Add cost</span>
+                    }
+                    <Icon name="edit" size={13} color={T.textSub}/>
+                  </button>
+                )}
+              </div>
+            </div>
+          </Card>
+        );
+      })}
+
+      <div style={{padding:"8px 0",textAlign:"center"}}>
+        <span style={{fontSize:12,color:T.tip}}>Tap "Add cost" on any vial to enter what you paid. Cost per dose calculates automatically for reconstituted vials with a standard dose set.</span>
+      </div>
+    </div>
+  );
+};
+
 const TABS = [
   {id:"calc",  label:"Calculator", icon:"flask"},
   {id:"inv",   label:"Inventory",  icon:"box"},
   {id:"proto", label:"Protocols",  icon:"calendar"},
   {id:"log",   label:"Log",        icon:"clock"},
+  {id:"cost",  label:"Cost",       icon:"dollar"},
 ];
 
 export default function App() {
@@ -1161,6 +1321,7 @@ export default function App() {
           {tab==="inv"   && <Inventory  vials={vials} addVial={addVial} updateVial={updateVial} deleteVial={deleteVial}/>}
           {tab==="proto" && <Protocols  vials={vials} protocols={protocols} addProto={addProto} toggleProto={toggleProto} deleteProto={deleteProto}/>}
           {tab==="log"   && <Log        vials={vials} entries={entries} addEntry={addEntry} deleteEntry={deleteEntry} deductVial={deductVial}/>}
+          {tab==="cost"  && <Cost       vials={vials} updateVial={updateVial}/>}
         </>}
       </div>
     </div>
