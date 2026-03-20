@@ -372,36 +372,7 @@ const useVials = (userId) => {
   return {vials,loading,addVial,updateVial,deductVial,deleteVial};
 };
 
-const useProtocols = (userId) => {
-  const [protocols, setProtocols] = useState([]);
-
-  useEffect(()=>{
-    if(!userId) return;
-    supabase.from("protocols").select("*").order("created_at",{ascending:true})
-      .then(({data})=>setProtocols(data||[]));
-  },[userId]);
-
-  const addProto = async (p) => {
-    const {data} = await supabase.from("protocols").insert({
-      user_id:userId, name:p.name, type:p.type, frequency:p.frequency,
-      start_date:p.startDate||null, end_date:p.endDate||null,
-      active:true, doses:p.doses, notes:p.notes||null
-    }).select().single();
-    if(data) setProtocols(s=>[...s,data]);
-  };
-
-  const toggleProto = async (id,active) => {
-    await supabase.from("protocols").update({active:!active}).eq("id",id);
-    setProtocols(s=>s.map(x=>x.id===id?{...x,active:!active}:x));
-  };
-
-  const deleteProto = async (id) => {
-    await supabase.from("protocols").delete().eq("id",id);
-    setProtocols(s=>s.filter(x=>x.id!==id));
-  };
-
-  return {protocols,addProto,toggleProto,deleteProto};
-};
+// protocols module removed — replaced by Calendar
 
 const useLog = (userId) => {
   const [entries, setEntries] = useState([]);
@@ -807,99 +778,207 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
 };
 
 // ══════════════════════════════════════════════════════════════════════════
-// PROTOCOLS
+// CALENDAR
 // ══════════════════════════════════════════════════════════════════════════
-const Protocols = ({vials,protocols,addProto,toggleProto,deleteProto}) => {
-  const [modal,  setModal]  = useState(false);
-  const [saving, setSaving] = useState(false);
-  const EMPTY = {name:"",type:"single",startDate:"",endDate:"",frequency:"daily",doses:[{vialId:"",doseMcg:"",time:"08:00"}],notes:""};
-  const [form, setForm] = useState(EMPTY);
+const Calendar = ({vials, entries}) => {
+  // weekOffset: 0 = current week, -1 = last week, etc.
+  const [weekOffset,  setWeekOffset]  = useState(0);
+  const [selectedDay, setSelectedDay] = useState(null); // "YYYY-MM-DD"
+  const [dayModal,    setDayModal]    = useState(false);
 
-  const addDose  = () => setForm(f=>({...f,doses:[...f.doses,{vialId:"",doseMcg:"",time:"08:00"}]}));
-  const updDose  = (i,k,v) => setForm(f=>{const d=[...f.doses];d[i]={...d[i],[k]:v};return{...f,doses:d};});
-  const remDose  = (i) => setForm(f=>({...f,doses:f.doses.filter((_,j)=>j!==i)}));
+  // ── Date helpers ─────────────────────────────────────────────────────────
+  const toYMD = (d) => {
+    const pad = n => String(n).padStart(2,"0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  };
+  const parseYMD = (s) => {
+    const [y,m,d] = s.split("-").map(Number);
+    return new Date(y, m-1, d);
+  };
+  const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate()+n); return r; };
 
-  const save = async () => {
-    if(!form.name) return;
-    setSaving(true);
-    await addProto(form);
-    setSaving(false); setModal(false); setForm(EMPTY);
+  // Sunday of the displayed week
+  const today    = new Date();
+  const todayYMD = toYMD(today);
+  const dow      = today.getDay(); // 0=Sun
+  const weekStart = addDays(today, -dow + weekOffset*7);
+  const weekDays  = Array.from({length:7}, (_,i) => addDays(weekStart, i));
+  const weekEnd   = weekDays[6];
+
+  const mmdd = (d) => d.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+  const weekLabel = `Week of ${mmdd(weekStart)} – ${mmdd(weekEnd)}`;
+
+  // ── Build day→entries lookup ──────────────────────────────────────────
+  const byDay = {};
+  entries.forEach(e => {
+    const d = toYMD(new Date(e.injected_at));
+    if(!byDay[d]) byDay[d] = [];
+    byDay[d].push(e);
+  });
+
+  // ── Entries for selected day modal ───────────────────────────────────
+  const dayEntries = selectedDay ? (byDay[selectedDay]||[]) : [];
+
+  // ── 7-day summary (Sun–Sat of displayed week) ─────────────────────────
+  const weekStartYMD = toYMD(weekStart);
+  const weekEndYMD   = toYMD(weekEnd);
+
+  // Entries within the displayed week
+  const weekEntries = entries.filter(e => {
+    const d = toYMD(new Date(e.injected_at));
+    return d >= weekStartYMD && d <= weekEndYMD;
+  });
+
+  // Group by vial_id for summary
+  const vialSummary = {};
+  weekEntries.forEach(e => {
+    const key = e.vial_id || e.vial_name;
+    if(!vialSummary[key]) vialSummary[key] = {
+      name: e.vial_name, dot: e.vial_dot, days: new Set(), totalMcg: 0,
+    };
+    vialSummary[key].days.add(toYMD(new Date(e.injected_at)));
+    vialSummary[key].totalMcg += +(e.dose_mcg || 0);
+  });
+
+  // Streak = consecutive days ending today (or most recent day in view)
+  const calcStreak = (vialId) => {
+    const vialEntries = entries
+      .filter(e => (e.vial_id||e.vial_name) === vialId)
+      .map(e => toYMD(new Date(e.injected_at)));
+    const daySet = new Set(vialEntries);
+    let streak = 0;
+    let check  = new Date(today);
+    while(true) {
+      if(daySet.has(toYMD(check))) { streak++; check = addDays(check,-1); }
+      else break;
+    }
+    return streak;
   };
 
-  const freqLabel = {daily:"Every day",eod:"Every other day","3x":"3× / week","2x":"Twice daily"};
+  const DAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span style={{fontSize:13,color:T.textSub}}>{protocols.filter(p=>p.active).length} active</span>
-        <Btn icon="plus" onClick={()=>setModal(true)}>New Protocol</Btn>
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+
+      {/* ── Week nav ── */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+        <button onClick={()=>setWeekOffset(w=>w-1)}
+          style={{width:36,height:36,borderRadius:10,border:`1px solid ${T.border}`,background:T.elevated,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={T.text} strokeWidth={2.2} strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <span style={{fontSize:13,fontWeight:700,color:T.text,textAlign:"center",flex:1}}>{weekLabel}</span>
+        <button onClick={()=>setWeekOffset(w=>Math.min(0,w+1))}
+          style={{width:36,height:36,borderRadius:10,border:`1px solid ${T.border}`,background:T.elevated,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:weekOffset>=0?0.3:1}}
+          disabled={weekOffset>=0}>
+          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={T.text} strokeWidth={2.2} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
       </div>
 
-      {protocols.length===0 && (
-        <Card style={{textAlign:"center",padding:52}}>
-          <Icon name="calendar" size={40} color={T.textMute}/>
-          <p style={{color:T.textSub,marginTop:12,fontSize:14}}>No protocols yet. Create your first cycle.</p>
+      {/* ── 7-day grid ── */}
+      <Card style={{padding:"14px 10px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
+          {weekDays.map((day,i) => {
+            const ymd      = toYMD(day);
+            const isToday  = ymd === todayYMD;
+            const dayLogs  = byDay[ymd] || [];
+            const selected = selectedDay === ymd;
+            // deduplicate dots by vial_id
+            const dots = [];
+            const seen = new Set();
+            dayLogs.forEach(e => {
+              const k = e.vial_id||e.vial_name;
+              if(!seen.has(k)) { seen.add(k); dots.push({dot:e.vial_dot, shape:"circle"}); }
+            });
+
+            return (
+              <button key={ymd} onClick={()=>{setSelectedDay(ymd);setDayModal(true);}}
+                style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"8px 2px",borderRadius:10,border:`1.5px solid ${selected?T.accent:isToday?"rgba(79,158,255,.4)":"transparent"}`,background:selected?T.accentDim:isToday?"rgba(79,158,255,.07)":"transparent",cursor:"pointer",minWidth:0}}>
+                <span style={{fontSize:10,fontWeight:700,color:T.textSub,letterSpacing:.3}}>{DAY_LABELS[i]}</span>
+                <span style={{fontSize:16,fontWeight:isToday?900:600,color:isToday?T.accent:T.text}}>{day.getDate()}</span>
+                {/* Dot cluster */}
+                <div style={{display:"flex",flexWrap:"wrap",justifyContent:"center",gap:2,minHeight:14,marginTop:2}}>
+                  {dots.slice(0,4).map((d,di)=>(
+                    <DotIcon key={di} dot={d.dot||T.accent} shape="circle" size={7}/>
+                  ))}
+                  {dots.length > 4 && <span style={{fontSize:8,color:T.textSub}}>+{dots.length-4}</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* ── Weekly summary by peptide ── */}
+      {Object.keys(vialSummary).length > 0 ? (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{fontSize:11,fontWeight:700,color:T.textSub,textTransform:"uppercase",letterSpacing:.7,paddingLeft:2}}>
+            This Week's Activity
+          </div>
+          {Object.entries(vialSummary).map(([key, s]) => {
+            const streak = calcStreak(key);
+            const totalMg = s.totalMcg / 1000;
+            const doseLabel = totalMg >= 1
+              ? `${totalMg.toFixed(2)} mg`
+              : `${s.totalMcg.toFixed(1)} mcg`;
+
+            return (
+              <Card key={key} style={{padding:"12px 16px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <DotIcon dot={s.dot||T.accent} shape="circle" size={10}/>
+                  <span style={{fontSize:15,fontWeight:800,color:T.text,flex:1}}>{s.name}</span>
+                </div>
+                <div style={{display:"flex",gap:8,marginTop:10}}>
+                  <div style={{flex:1,background:T.elevated,borderRadius:8,padding:"8px 0",textAlign:"center"}}>
+                    <div style={{fontSize:14,fontWeight:700,color:T.text}}>{doseLabel}</div>
+                    <div style={{fontSize:10,color:T.textSub,marginTop:2}}>consumed this week</div>
+                  </div>
+                  <div style={{flex:1,background:T.elevated,borderRadius:8,padding:"8px 0",textAlign:"center"}}>
+                    <div style={{fontSize:14,fontWeight:700,color:streak>=5?T.green:streak>=3?T.amber:T.text}}>
+                      {streak} {streak===1?"day":"days"}
+                    </div>
+                    <div style={{fontSize:10,color:T.textSub,marginTop:2}}>
+                      {streak>=2?"🔥 streak":"current streak"}
+                    </div>
+                  </div>
+                  <div style={{flex:1,background:T.elevated,borderRadius:8,padding:"8px 0",textAlign:"center"}}>
+                    <div style={{fontSize:14,fontWeight:700,color:T.accent}}>{s.days.size}</div>
+                    <div style={{fontSize:10,color:T.textSub,marginTop:2}}>days taken</div>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        <Card style={{textAlign:"center",padding:36}}>
+          <p style={{color:T.textSub,margin:0,fontSize:14}}>No injections logged this week.</p>
         </Card>
       )}
 
-      {protocols.map(p=>{
-        const vial0 = vials.find(x=>x.id===p.doses?.[0]?.vialId);
-        return (
-          <Card key={p.id} style={{opacity:p.active?1:.5,borderLeft:`3px solid ${vial0?.dot||T.accent}`}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:3}}>
-                  <span style={{fontSize:17,fontWeight:800,color:T.text}}>{p.name}</span>
-                  <Badge bg={p.active?T.greenDim:T.elevated} color={p.active?T.green:T.textSub}>{p.active?"Active":"Paused"}</Badge>
-                  <Badge bg={T.elevated} color={T.textSub}>{p.type==="single"?"Single":"Stack"}</Badge>
+      {/* ── Day detail modal ── */}
+      <Modal open={dayModal} onClose={()=>setDayModal(false)}
+        title={selectedDay ? new Date(selectedDay+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"}) : ""}>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {dayEntries.length === 0 ? (
+            <p style={{color:T.textSub,textAlign:"center",padding:"20px 0",margin:0}}>No injections logged on this day.</p>
+          ) : dayEntries.map(e => (
+            <div key={e.id} style={{display:"flex",alignItems:"center",gap:12,background:T.elevated,borderRadius:10,padding:"12px 14px"}}>
+              <div style={{width:34,height:34,borderRadius:9,background:e.vial_dot?`${e.vial_dot}22`:T.accentDim,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`1.5px solid ${e.vial_dot||T.accent}44`}}>
+                {e.vial_dot ? <DotIcon dot={e.vial_dot} shape="circle" size={14}/> : <Icon name="syringe" size={15} color={T.accent}/>}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:15,fontWeight:800,color:T.text}}>{e.vial_name}</div>
+                <div style={{fontSize:13,color:T.textSub}}>
+                  {e.dose_iu && <span style={{color:T.accent}}>{e.dose_iu} IU</span>}
+                  {e.dose_mcg && <span style={{color:T.text}}> · {+e.dose_mcg >= 1000 ? (+e.dose_mcg/1000).toFixed(2)+" mg" : (+e.dose_mcg).toFixed(1)+" mcg"}</span>}
                 </div>
-                <span style={{fontSize:13,color:T.textSub}}>{freqLabel[p.frequency]} · {(p.doses||[]).length} compound{(p.doses||[]).length!==1?"s":""}</span>
-                {p.start_date && <div style={{fontSize:12,color:T.textMute,marginTop:2}}>{fmtDate(p.start_date)}{p.end_date?` → ${fmtDate(p.end_date)}`:" → ongoing"}</div>}
+                {e.notes && <div style={{fontSize:12,color:T.textSub,marginTop:2}}>{e.notes}</div>}
               </div>
-              <div style={{display:"flex",gap:6,marginLeft:8}}>
-                <button onClick={()=>toggleProto(p.id,p.active)} style={{background:T.elevated,border:"none",borderRadius:8,padding:"7px 10px",cursor:"pointer",fontSize:12,fontWeight:700,color:T.textSub,whiteSpace:"nowrap"}}>{p.active?"Pause":"Resume"}</button>
-                <button onClick={()=>deleteProto(p.id)} style={{background:T.redDim,border:"none",borderRadius:8,padding:"7px 9px",cursor:"pointer"}}><Icon name="trash" size={15} color={T.red}/></button>
+              <div style={{fontSize:11,color:T.textMute,flexShrink:0}}>
+                {new Date(e.injected_at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}
               </div>
-            </div>
-            <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:6}}>
-              {(p.doses||[]).map((d,i)=>{
-                const v=vials.find(x=>x.id===d.vialId);
-                return (
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:T.elevated,borderRadius:9,padding:"9px 13px"}}>
-                    {v?.dot ? <span style={{width:8,height:8,borderRadius:"50%",background:v.dot,flexShrink:0}}/> : <Icon name="syringe" size={14} color={T.accent}/>}
-                    <span style={{fontSize:14,fontWeight:700,color:T.text}}>{v?v.name:<span style={{color:T.textMute}}>Unknown</span>}</span>
-                    <span style={{fontSize:13,color:T.textSub,marginLeft:"auto"}}>{d.doseMcg} mcg @ {d.time}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        );
-      })}
-
-      <Modal open={modal} onClose={()=>setModal(false)} title="New Protocol">
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <Input label="Protocol Name" placeholder="e.g. BPC + TB500 Healing Stack" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            <Sel label="Type" value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))} options={[{value:"single",label:"Single peptide"},{value:"stack",label:"Multi-peptide stack"}]}/>
-            <Sel label="Frequency" value={form.frequency} onChange={e=>setForm(f=>({...f,frequency:e.target.value}))} options={[{value:"daily",label:"Daily"},{value:"eod",label:"Every other day"},{value:"3x",label:"3× / week"},{value:"2x",label:"Twice daily"}]}/>
-            <Input label="Start Date" type="date" value={form.startDate} onChange={e=>setForm(f=>({...f,startDate:e.target.value}))}/>
-            <Input label="End Date (opt.)" type="date" value={form.endDate} onChange={e=>setForm(f=>({...f,endDate:e.target.value}))}/>
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <label style={{fontSize:11,fontWeight:700,color:T.textSub,textTransform:"uppercase",letterSpacing:.6}}>Compounds</label>
-            <Btn variant="ghost" icon="plus" onClick={addDose}>Add</Btn>
-          </div>
-          {form.doses.map((d,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 72px 66px 34px",gap:8,alignItems:"end"}}>
-              <Sel label={i===0?"Peptide":""} value={d.vialId} onChange={e=>updDose(i,"vialId",e.target.value)} options={[{value:"",label:"Select…"},...vials.map(v=>({value:v.id,label:v.name}))]}/>
-              <NumInput label={i===0?"mcg":""} placeholder="250" value={d.doseMcg} onChange={e=>updDose(i,"doseMcg",e.target.value)}/>
-              <Input label={i===0?"Time":""} type="time" value={d.time} onChange={e=>updDose(i,"time",e.target.value)}/>
-              {form.doses.length>1 && <button onClick={()=>remDose(i)} style={{background:T.redDim,border:"none",borderRadius:8,height:40,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",marginTop:i===0?20:0}}><Icon name="x" size={14} color={T.red}/></button>}
             </div>
           ))}
-          <Input label="Notes (optional)" placeholder="Titration plan, goals…" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))}/>
-          <Btn loading={saving} style={{width:"100%",justifyContent:"center"}} icon="check" onClick={save}>Create Protocol</Btn>
         </div>
       </Modal>
     </div>
@@ -1236,7 +1315,7 @@ const Cost = ({vials, updateVial}) => {
 const TABS = [
   {id:"calc",  label:"Calculator", icon:"flask"},
   {id:"inv",   label:"Inventory",  icon:"box"},
-  {id:"proto", label:"Protocols",  icon:"calendar"},
+  {id:"cal",   label:"Calendar",   icon:"calendar"},
   {id:"log",   label:"Log",        icon:"clock"},
   {id:"cost",  label:"Cost",       icon:"dollar"},
 ];
@@ -1259,7 +1338,7 @@ export default function App() {
   },[]);
 
   const {vials,loading:vialsLoading,addVial,updateVial,deductVial,deleteVial} = useVials(user?.id);
-  const {protocols,addProto,toggleProto,deleteProto}                         = useProtocols(user?.id);
+  // protocols removed
   const {entries,addEntry,deleteEntry}                                        = useLog(user?.id);
 
   const signOut = () => supabase.auth.signOut();
@@ -1319,7 +1398,7 @@ export default function App() {
         ) : <>
           {tab==="calc"  && <Calculator/>}
           {tab==="inv"   && <Inventory  vials={vials} addVial={addVial} updateVial={updateVial} deleteVial={deleteVial}/>}
-          {tab==="proto" && <Protocols  vials={vials} protocols={protocols} addProto={addProto} toggleProto={toggleProto} deleteProto={deleteProto}/>}
+          {tab==="cal"   && <Calendar   vials={vials} entries={entries}/>}
           {tab==="log"   && <Log        vials={vials} entries={entries} addEntry={addEntry} deleteEntry={deleteEntry} deductVial={deductVial}/>}
           {tab==="cost"  && <Cost       vials={vials} updateVial={updateVial}/>}
         </>}
