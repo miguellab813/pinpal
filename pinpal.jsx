@@ -1351,7 +1351,7 @@ export default function App() {
   return (
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:"-apple-system,'SF Pro Display',BlinkMacSystemFont,sans-serif",colorScheme:"dark"}}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      <ExportModal open={exportOpen} onClose={()=>setExportOpen(false)} vials={vials} protocols={protocols} entries={entries}/>
+      <ExportModal open={exportOpen} onClose={()=>setExportOpen(false)} vials={vials} protocols={[]} entries={entries}/>
 
       <div style={{background:`${T.surface}f0`,backdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`,position:"sticky",top:0,zIndex:50}}>
         <div style={{maxWidth:520,margin:"0 auto",padding:"16px 18px 0"}}>
