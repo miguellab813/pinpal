@@ -330,15 +330,18 @@ const useVials = (userId) => {
 
   const load = useCallback(async () => {
     if(!userId) return;
-    const {data,error} = await supabase.from("vials").select("*").order("created_at",{ascending:true});
-    // Sort client-side: sort_order first (nulls last), then created_at
-    const sorted = (data||[]).sort((a,b)=>{
-      const ao = a.sort_order ?? 999999;
-      const bo = b.sort_order ?? 999999;
-      if(ao !== bo) return ao - bo;
-      return new Date(a.created_at) - new Date(b.created_at);
-    });
-    setVials(sorted);
+    try {
+      const {data,error} = await supabase.from("vials").select("*").order("created_at",{ascending:true});
+      if(error){ console.error("useVials load error:", JSON.stringify(error)); setLoading(false); return; }
+      // Sort client-side: sort_order first (nulls last), then created_at
+      const sorted = (data||[]).sort((a,b)=>{
+        const ao = a.sort_order ?? 999999;
+        const bo = b.sort_order ?? 999999;
+        if(ao !== bo) return ao - bo;
+        return new Date(a.created_at) - new Date(b.created_at);
+      });
+      setVials(sorted);
+    } catch(e){ console.error("useVials load exception:", e); }
     setLoading(false);
   },[userId]);
 
