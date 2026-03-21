@@ -92,6 +92,7 @@ const Icon = ({name,size=20,color="currentColor"}) => {
     eye:      "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 100 6 3 3 0 000-6z",
     eyeoff:   "M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24 M1 1l22 22",
     dollar:   "M12 2v20M17 5H9.5a3.5 3.5 0 100 7h5a3.5 3.5 0 110 7H6",
+    upload:   "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12",
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -329,8 +330,15 @@ const useVials = (userId) => {
 
   const load = useCallback(async () => {
     if(!userId) return;
-    const {data} = await supabase.from("vials").select("*").order("sort_order",{ascending:true,nullsFirst:false}).order("created_at",{ascending:true});
-    setVials(data||[]);
+    const {data,error} = await supabase.from("vials").select("*").order("created_at",{ascending:true});
+    // Sort client-side: sort_order first (nulls last), then created_at
+    const sorted = (data||[]).sort((a,b)=>{
+      const ao = a.sort_order ?? 999999;
+      const bo = b.sort_order ?? 999999;
+      if(ao !== bo) return ao - bo;
+      return new Date(a.created_at) - new Date(b.created_at);
+    });
+    setVials(sorted);
     setLoading(false);
   },[userId]);
 
@@ -1220,30 +1228,203 @@ const EMPTY = {vialId:"",doseMcg:"",doseIU:"10",doseML:"",timestamp:localNow(),n
 };
 
 // ══════════════════════════════════════════════════════════════════════════
-// EXPORT
+// EXPORT + IMPORT MODAL
 // ══════════════════════════════════════════════════════════════════════════
-const ExportModal = ({open,onClose,vials,protocols,entries}) => {
-  const [done,setDone] = useState(false);
-  const handle = () => {
+const DataModal = ({open,onClose,vials,entries,userId,onImportDone}) => {
+  const [tab,        setTab]        = useState("export");
+  const [exportDone, setExportDone] = useState(false);
+  const [importing,  setImporting]  = useState(false);
+  const [importMsg,  setImportMsg]  = useState(null); // {type:"success"|"error", text}
+  const fileRef = React.useRef();
+
+  // ── Export ───────────────────────────────────────────────────────────────
+  const handleExport = () => {
     const ts = new Date().toISOString().slice(0,10);
-    const vialsCSV   = toCSV(["ID","Name","Total (mg)","Remaining (mg)","% Left","Notes","Created"],vials.map(v=>[v.id,v.name,v.total_mg,v.remaining_mg,Math.round((v.remaining_mg/v.total_mg)*100),v.notes||"",fmtDate(v.created_at)]));
-    const protoCSV   = toCSV(["ID","Name","Type","Frequency","Start","End","Active","Notes"],protocols.map(p=>[p.id,p.name,p.type,p.frequency,p.start_date||"",p.end_date||"",p.active?"Yes":"No",p.notes||""]));
-    const logCSV     = toCSV(["ID","Peptide","Dose (mcg)","IU","mL","Injected At","Notes"],entries.map(e=>[e.id,e.vial_name,e.dose_mcg||"",e.dose_iu||"",e.dose_ml||"",e.injected_at,e.notes||""]));
-    const combined   = [`PinPal Export — ${ts}`,"","=== INVENTORY ===",vialsCSV,"","=== PROTOCOLS ===",protoCSV,"","=== INJECTION LOG ===",logCSV].join("\n");
+    const vialsCSV = toCSV(
+      ["ID","Name","Total (mg)","Remaining (mg)","% Left","Status","BAC Water (mL)","Standard Dose (IU)","Dose Unit","Cost Paid","Notes","Created"],
+      vials.map(v=>[v.id,v.name,v.total_mg,v.remaining_mg,Math.round((v.remaining_mg/v.total_mg)*100),v.status||"powder",v.bac_water_ml||"",v.standard_dose_iu||"",v.dose_unit||"mcg",v.cost_paid||"",v.notes||"",fmtDate(v.created_at)])
+    );
+    const logCSV = toCSV(
+      ["ID","Peptide","Dose (mcg)","IU","mL","Injected At","Notes"],
+      entries.map(e=>[e.id,e.vial_name,e.dose_mcg||"",e.dose_iu||"",e.dose_ml||"",e.injected_at,e.notes||""])
+    );
+    const combined = [`PinPal Export — ${ts}`,"","=== INVENTORY ===",vialsCSV,"","=== INJECTION LOG ===",logCSV].join("\n");
     downloadCSV(`pinpal-export-${ts}.csv`,combined);
-    setDone(true); setTimeout(()=>{setDone(false);onClose();},1800);
+    setExportDone(true); setTimeout(()=>setExportDone(false),2000);
   };
+
+  // ── Import ───────────────────────────────────────────────────────────────
+  const parseCSVLine = (line) => {
+    const result = []; let cur = ""; let inQ = false;
+    for(let i=0;i<line.length;i++){
+      const c = line[i];
+      if(c==='"'){ if(inQ && line[i+1]==='"'){cur+='"';i++;}else{inQ=!inQ;} }
+      else if(c===',' && !inQ){ result.push(cur); cur=""; }
+      else cur+=c;
+    }
+    result.push(cur);
+    return result;
+  };
+
+  const parseCSVBlock = (text) => {
+    const lines = text.split("\n").map(l=>l.trim()).filter(l=>l.length>0);
+    if(lines.length<2) return [];
+    const headers = parseCSVLine(lines[0]).map(h=>h.trim().toLowerCase());
+    return lines.slice(1).map(line=>{
+      const vals = parseCSVLine(line);
+      const obj = {};
+      headers.forEach((h,i)=>{ obj[h] = vals[i]?.trim()||""; });
+      return obj;
+    });
+  };
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    setImporting(true); setImportMsg(null);
+    try {
+      const text = await file.text();
+
+      // Split into sections
+      const sections = {};
+      let currentSection = null; const sectionLines = {};
+      text.split("\n").forEach(line=>{
+        const m = line.match(/^===\s*(.+?)\s*===$/);
+        if(m){ currentSection = m[1].toUpperCase(); sectionLines[currentSection]=[]; }
+        else if(currentSection) sectionLines[currentSection].push(line);
+      });
+
+      let vialsImported=0, logImported=0, errors=[];
+
+      // ── Import Inventory ─────────────────────────────────────────────
+      const invKey = Object.keys(sectionLines).find(k=>k.includes("INVENTOR"));
+      if(invKey){
+        const block = sectionLines[invKey].join("\n");
+        const rows  = parseCSVBlock(block);
+        for(const r of rows){
+          const name = r["name"]||r["peptide name"];
+          const totalMg = parseFloat(r["total (mg)"]||r["total_mg"]||r["total mg"]);
+          if(!name || isNaN(totalMg)) continue;
+          const remainingMg = parseFloat(r["remaining (mg)"]||r["remaining_mg"]||r["remaining mg"])||totalMg;
+          const {error} = await supabase.from("vials").insert({
+            user_id:userId,
+            name, total_mg:totalMg, remaining_mg:remainingMg,
+            status:r["status"]||"powder",
+            bac_water_ml:parseFloat(r["bac water (ml)"]||r["bac_water_ml"])||null,
+            standard_dose_iu:parseFloat(r["standard dose (iu)"]||r["standard_dose_iu"])||null,
+            dose_unit:r["dose unit"]||r["dose_unit"]||"mcg",
+            cost_paid:parseFloat(r["cost paid"]||r["cost_paid"])||null,
+            notes:r["notes"]||null,
+            dot:r["dot"]||null, shape:r["shape"]||"circle",
+          });
+          if(error) errors.push(`Vial "${name}": ${error.message}`);
+          else vialsImported++;
+        }
+      }
+
+      // ── Import Injection Log ─────────────────────────────────────────
+      const logKey = Object.keys(sectionLines).find(k=>k.includes("LOG")||k.includes("INJECT"));
+      if(logKey){
+        const block = sectionLines[logKey].join("\n");
+        const rows  = parseCSVBlock(block);
+        for(const r of rows){
+          const vialName = r["peptide"]||r["vial_name"]||r["vial name"]||r["name"];
+          const injectedAt = r["injected at"]||r["injected_at"];
+          if(!vialName || !injectedAt) continue;
+          // Try to match to existing vial for vial_id + dot
+          const matched = vials.find(v=>v.name.toLowerCase()===vialName.toLowerCase());
+          const {error} = await supabase.from("injection_log").insert({
+            user_id:userId,
+            vial_id:matched?.id||null,
+            vial_name:vialName,
+            vial_dot:matched?.dot||null,
+            dose_mcg:parseFloat(r["dose (mcg)"]||r["dose_mcg"])||null,
+            dose_iu:parseFloat(r["iu"]||r["dose_iu"])||null,
+            dose_ml:parseFloat(r["ml"]||r["dose_ml"])||null,
+            injected_at:new Date(injectedAt).toISOString(),
+            notes:r["notes"]||null,
+          });
+          if(error) errors.push(`Log entry "${vialName}": ${error.message}`);
+          else logImported++;
+        }
+      }
+
+      const parts = [];
+      if(vialsImported>0) parts.push(`${vialsImported} vial${vialsImported!==1?"s":""}`);
+      if(logImported>0)   parts.push(`${logImported} log entr${logImported!==1?"ies":"y"}`);
+
+      if(parts.length===0 && errors.length===0){
+        setImportMsg({type:"error",text:"No importable data found. Make sure the file is a PinPal export or follows the same column headers."});
+      } else {
+        setImportMsg({type:"success",text:`Imported ${parts.join(" and ")}.${errors.length>0?" Some rows skipped: "+errors.slice(0,2).join("; "):""}`});
+        onImportDone(); // reload vials from Supabase
+      }
+    } catch(err){
+      setImportMsg({type:"error",text:"Could not read file: "+err.message});
+    }
+    setImporting(false);
+    if(fileRef.current) fileRef.current.value="";
+  };
+
   return (
-    <Modal open={open} onClose={onClose} title="Export Data">
-      <div style={{display:"flex",flexDirection:"column",gap:14}}>
-        <p style={{fontSize:14,color:T.text,margin:0}}>Single <strong style={{color:T.accent}}>.csv</strong> with all three sections. Downloaded to your device.</p>
-        {[{label:"Vials",count:vials.length,icon:"box"},{label:"Protocols",count:protocols.length,icon:"calendar"},{label:"Injection entries",count:entries.length,icon:"clock"}].map(r=>(
-          <div key={r.label} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:T.elevated,borderRadius:10,padding:"12px 14px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}><Icon name={r.icon} size={17} color={T.accent}/><span style={{fontSize:14,color:T.text}}>{r.label}</span></div>
-            <Badge>{r.count} row{r.count!==1?"s":""}</Badge>
-          </div>
-        ))}
-        <Btn variant={done?"success":"primary"} icon={done?"check":"download"} style={{width:"100%",justifyContent:"center",marginTop:4}} onClick={handle}>{done?"Downloaded!":"Download CSV"}</Btn>
+    <Modal open={open} onClose={()=>{onClose();setImportMsg(null);setTab("export");}} title="Data">
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+        {/* Tab switcher */}
+        <div style={{display:"flex",background:T.elevated,borderRadius:10,padding:3,gap:3}}>
+          {[{id:"export",label:"Export",icon:"download"},{id:"import",label:"Import",icon:"upload"}].map(t=>(
+            <button key={t.id} onClick={()=>{setTab(t.id);setImportMsg(null);}}
+              style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"9px",borderRadius:8,border:"none",cursor:"pointer",transition:"all .15s",
+                background:tab===t.id?T.surface:"transparent",
+                color:tab===t.id?T.text:T.textSub,fontWeight:700,fontSize:13}}>
+              <Icon name={t.icon} size={14} color={tab===t.id?T.accent:T.textSub}/>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── EXPORT TAB ── */}
+        {tab==="export" && (
+          <>
+            <p style={{fontSize:14,color:T.text,margin:0}}>Downloads a <strong style={{color:T.accent}}>.csv</strong> with your full inventory and injection log.</p>
+            {[{label:"Vials",count:vials.length,icon:"box"},{label:"Injection entries",count:entries.length,icon:"clock"}].map(r=>(
+              <div key={r.label} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:T.elevated,borderRadius:10,padding:"12px 14px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}><Icon name={r.icon} size={17} color={T.accent}/><span style={{fontSize:14,color:T.text}}>{r.label}</span></div>
+                <Badge>{r.count} row{r.count!==1?"s":""}</Badge>
+              </div>
+            ))}
+            <Btn variant={exportDone?"success":"primary"} icon={exportDone?"check":"download"} style={{width:"100%",justifyContent:"center"}} onClick={handleExport}>
+              {exportDone?"Downloaded!":"Download CSV"}
+            </Btn>
+          </>
+        )}
+
+        {/* ── IMPORT TAB ── */}
+        {tab==="import" && (
+          <>
+            <div style={{background:T.elevated,borderRadius:12,padding:"14px",display:"flex",flexDirection:"column",gap:8}}>
+              <p style={{fontSize:14,color:T.text,margin:0,fontWeight:700}}>Import from CSV</p>
+              <p style={{fontSize:13,color:T.textSub,margin:0}}>Works with PinPal exports or any CSV with matching column headers. Existing data is not overwritten — rows are added.</p>
+              <div style={{fontSize:12,color:T.tip,marginTop:4}}>
+                <strong>Inventory columns:</strong> Name, Total (mg), Remaining (mg), Status, BAC Water (mL), Standard Dose (IU), Notes<br/>
+                <strong>Log columns:</strong> Peptide, Dose (mcg), IU, mL, Injected At, Notes
+              </div>
+            </div>
+
+            {importMsg && (
+              <div style={{background:importMsg.type==="success"?T.greenDim:T.redDim,border:`1px solid ${importMsg.type==="success"?T.green:T.red}44`,borderRadius:10,padding:"10px 14px",display:"flex",gap:8,alignItems:"flex-start"}}>
+                <Icon name={importMsg.type==="success"?"check":"alert"} size={15} color={importMsg.type==="success"?T.green:T.red}/>
+                <span style={{fontSize:13,color:importMsg.type==="success"?T.green:T.red,lineHeight:1.5}}>{importMsg.text}</span>
+              </div>
+            )}
+
+            <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleFile} style={{display:"none"}}/>
+            <Btn loading={importing} icon="upload" style={{width:"100%",justifyContent:"center"}} onClick={()=>fileRef.current?.click()}>
+              {importing?"Importing…":"Choose CSV File"}
+            </Btn>
+          </>
+        )}
+
       </div>
     </Modal>
   );
@@ -1403,7 +1584,7 @@ export default function App() {
   const [user,        setUser]        = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [tab,         setTab]         = useState("inv");
-  const [exportOpen,  setExportOpen]  = useState(false);
+  const [dataOpen,    setDataOpen]    = useState(false);
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{
@@ -1430,7 +1611,7 @@ export default function App() {
   return (
     <div style={{minHeight:"100svh",background:T.bg,fontFamily:"-apple-system,'SF Pro Display',BlinkMacSystemFont,sans-serif",colorScheme:"dark",WebkitOverflowScrolling:"touch"}}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      <ExportModal open={exportOpen} onClose={()=>setExportOpen(false)} vials={vials} protocols={[]} entries={entries}/>
+      <DataModal open={dataOpen} onClose={()=>setDataOpen(false)} vials={vials} entries={entries} userId={user.id} onImportDone={()=>{ setTimeout(()=>window.location.reload(),400); }}/>
 
       <div style={{background:`${T.surface}f0`,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderBottom:`1px solid ${T.border}`,position:"sticky",top:0,zIndex:50,paddingTop:"env(safe-area-inset-top)"}}>
         <div style={{maxWidth:680,margin:"0 auto",padding:"14px 20px 0"}}>
@@ -1449,7 +1630,7 @@ export default function App() {
                   <span style={{fontSize:12,fontWeight:700,color:T.red}}>{lowCount} low</span>
                 </div>
               )}
-              <button onClick={()=>setExportOpen(true)} title="Export" style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+              <button onClick={()=>setDataOpen(true)} title="Export / Import" style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                 <Icon name="download" size={16} color={T.textSub}/>
               </button>
               <button onClick={signOut} title="Sign out" style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
