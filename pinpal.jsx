@@ -1653,7 +1653,7 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{maxWidth:680,margin:"0 auto",padding:"18px 16px",paddingBottom:"calc(100px + env(safe-area-inset-bottom)"}}>
+      <div style={{maxWidth:680,margin:"0 auto",padding:"18px 16px",paddingBottom:"calc(100px + env(safe-area-inset-bottom))"}}>
         {vialsLoading ? (
           <div style={{display:"flex",justifyContent:"center",padding:60}}>
             <div style={{width:28,height:28,border:`3px solid ${T.border}`,borderTopColor:T.accent,borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
