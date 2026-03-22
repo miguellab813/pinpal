@@ -208,7 +208,13 @@ const useVials = (userId) => {
     if(!userId) return;
     const {data,error} = await supabase.from("vials").select("*").order("created_at",{ascending:true});
     if(error) console.error("load vials:", error.message);
-    setVials(data||[]);
+    const sorted = (data||[]).slice().sort((a,b)=>{
+      const ao = a.sort_order ?? 999999;
+      const bo = b.sort_order ?? 999999;
+      if(ao!==bo) return ao-bo;
+      return new Date(a.created_at)-new Date(b.created_at);
+    });
+    setVials(sorted);
     setLoading(false);
   },[userId]);
 
@@ -258,7 +264,18 @@ const useVials = (userId) => {
     setVials(s=>s.filter(x=>x.id!==id));
   };
 
-  return {vials,loading,addVial,updateVial,deductVial,deleteVial};
+  const reorderVials = async (reordered) => {
+    // Optimistic update
+    setVials(cur => {
+      const ids = new Set(reordered.map(v=>v.id));
+      return [...reordered, ...cur.filter(v=>!ids.has(v.id))];
+    });
+    await Promise.all(reordered.map((v,i)=>
+      supabase.from("vials").update({sort_order:i}).eq("id",v.id)
+    ));
+  };
+
+  return {vials,loading,addVial,updateVial,deductVial,deleteVial,reorderVials};
 };
 
 const useLog = (userId) => {
@@ -372,13 +389,15 @@ const DotIcon = ({dot, shape="circle", size=9}) => {
 };
 
 // ── Inventory ─────────────────────────────────────────────────────────────
-const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
+const Inventory = ({vials,addVial,updateVial,deleteVial,reorderVials}) => {
   const [modal,setModal] = useState(false);
   const [editId,setEditId] = useState(null);
   const [saving,setSaving] = useState(false);
   const [saveError,setSaveError] = useState("");
   const EMPTY = {name:"",totalMg:"",remaining:"",dot:"#4f9eff",shape:"circle",status:"powder",bacWaterMl:"",standardDoseIu:"10",doseUnit:"mcg",costPaid:"",notes:""};
   const [form,setForm] = useState(EMPTY);
+  const [collapsed,setCollapsed] = useState({reconstituted:false,powder:false});
+  const toggleCollapse = k => setCollapsed(s=>({...s,[k]:!s[k]}));
 
   const save = async () => {
     if(!form.name||!form.totalMg) return;
@@ -413,18 +432,42 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
       {folders.map(f=>{
         const group = vials.filter(v=>(v.status||"powder")===f.key);
         if(!group.length) return null;
+        const isOpen = !collapsed[f.key];
+
+        const handleDragStart = (e,id) => { e.dataTransfer.setData("vialId",id); e.dataTransfer.setData("folderKey",f.key); e.dataTransfer.effectAllowed="move"; };
+        const handleDragOver  = e => { e.preventDefault(); e.dataTransfer.dropEffect="move"; };
+        const handleDrop = (e,targetId) => {
+          e.preventDefault();
+          const dragId = e.dataTransfer.getData("vialId");
+          const fromFolder = e.dataTransfer.getData("folderKey");
+          if(dragId===targetId||fromFolder!==f.key) return;
+          const from=group.findIndex(v=>v.id===dragId);
+          const to=group.findIndex(v=>v.id===targetId);
+          if(from<0||to<0) return;
+          const r=[...group]; const [m]=r.splice(from,1); r.splice(to,0,m);
+          reorderVials(r);
+        };
+
         return (
           <div key={f.key} style={{display:"flex",flexDirection:"column",gap:8}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,paddingLeft:2}}>
+            {/* Folder header — tappable to collapse */}
+            <button onClick={()=>toggleCollapse(f.key)}
+              style={{display:"flex",alignItems:"center",gap:6,paddingLeft:2,background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
               <span>{f.icon}</span>
               <span style={{fontSize:11,fontWeight:800,color:f.color,textTransform:"uppercase",letterSpacing:.8}}>{f.label}</span>
               <span style={{fontSize:11,color:T.textMute}}>({group.length})</span>
-            </div>
-            {group.map(v=>{
+              <span style={{fontSize:11,color:T.textMute,marginLeft:"auto"}}>
+                {isOpen?"▾":"▸"}
+              </span>
+              {isOpen && group.length>1 && <span style={{fontSize:10,color:T.textMute}}>drag to reorder</span>}
+            </button>
+
+            {isOpen && group.map(v=>{
               const p=pct(v), bar=p<25?T.red:p<50?T.amber:T.green;
-              const dotC = v.dot||T.accent;
+              const dotC = v.dot==="rainbow"?"#bf5af2":(v.dot||T.accent);
               return (
-                <Card key={v.id} style={{borderLeft:`3px solid ${dotC}`}}>
+                <div key={v.id} draggable onDragStart={e=>handleDragStart(e,v.id)} onDragOver={handleDragOver} onDrop={e=>handleDrop(e,v.id)} style={{borderRadius:16}}>
+                <Card style={{borderLeft:`3px solid ${dotC}`,cursor:"grab"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div style={{flex:1}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -456,6 +499,7 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
                   </div>
                   {v.notes && <p style={{marginTop:8,fontSize:12,color:T.textSub,marginBottom:0}}>{v.notes}</p>}
                 </Card>
+                </div>
               );
             })}
           </div>
@@ -629,7 +673,7 @@ const Log = ({vials,entries,addEntry,deleteEntry,deductVial}) => {
 };
 
 // ── Cost ──────────────────────────────────────────────────────────────────
-const Cost = ({vials,updateVial}) => {
+const Cost = ({vials,updateVial,reorderVials}) => {
   const [editId,setEditId] = useState(null);
   const [editVal,setEditVal] = useState("");
   const [saving,setSaving] = useState(false);
@@ -815,8 +859,8 @@ const Calendar = ({vials,entries}) => {
 
 // ── Root ──────────────────────────────────────────────────────────────────
 const TABS = [
-  {id:"inv",   label:"Inventory", icon:"box"},
   {id:"calc",  label:"Calculator",icon:"flask"},
+  {id:"inv",   label:"Inventory", icon:"box"},
   {id:"cal",   label:"Calendar",  icon:"calendar"},
   {id:"log",   label:"Log",       icon:"clock"},
   {id:"cost",  label:"Cost",      icon:"dollar"},
@@ -833,7 +877,7 @@ export default function App() {
     return ()=>subscription.unsubscribe();
   },[]);
 
-  const {vials,loading,addVial,updateVial,deductVial,deleteVial} = useVials(user?.id);
+  const {vials,loading,addVial,updateVial,deductVial,deleteVial,reorderVials} = useVials(user?.id);
   const {entries,addEntry,deleteEntry} = useLog(user?.id);
 
   if(authLoading) return <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:32,height:32,border:`3px solid ${T.border}`,borderTopColor:T.accent,borderRadius:"50%",animation:"spin .7s linear infinite"}}/><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
@@ -881,11 +925,11 @@ export default function App() {
             <div style={{width:28,height:28,border:`3px solid ${T.border}`,borderTopColor:T.accent,borderRadius:"50%",animation:"spin .7s linear infinite"}}/>
           </div>
         ) : <>
-          {tab==="inv"  && <Inventory vials={vials} addVial={addVial} updateVial={updateVial} deleteVial={deleteVial}/>}
+          {tab==="inv"  && <Inventory vials={vials} addVial={addVial} updateVial={updateVial} deleteVial={deleteVial} reorderVials={reorderVials}/>}
           {tab==="calc" && <Calculator/>}
           {tab==="cal"  && <Calendar  vials={vials} entries={entries}/>}
           {tab==="log"  && <Log vials={vials} entries={entries} addEntry={addEntry} deleteEntry={deleteEntry} deductVial={deductVial}/>}
-          {tab==="cost" && <Cost vials={vials} updateVial={updateVial}/>}
+          {tab==="cost" && <Cost vials={vials} updateVial={updateVial} reorderVials={reorderVials}/>}
         </>}
       </div>
     </div>
