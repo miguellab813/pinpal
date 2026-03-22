@@ -38,6 +38,8 @@ const Icon = ({name,size=20,color="currentColor"}) => {
     syringe:"M18 2l4 4-1 1-4-4 1-1zm-2 2l-10 10m1 5l-4 1 1-4m3 3l-2-2m9-11l2 2",
     download:"M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4",
     logout:"M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1",
+    download:"M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4",
+    download:"M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4",
     eye:"M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 100 6 3 3 0 000-6z",
     eyeoff:"M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24 M1 1l22 22",
   };
@@ -857,6 +859,208 @@ const Calendar = ({vials,entries}) => {
   );
 };
 
+// ── CSV helpers ──────────────────────────────────────────────────────────
+const escapeCSV = v => {
+  if(v===null||v===undefined) return "";
+  const s = String(v);
+  return (s.includes(",")||s.includes('"')||s.includes("
+")) ? `"${s.replace(/"/g,'""')}"` : s;
+};
+const toCSV = (headers,rows) => [headers,...rows].map(r=>r.map(escapeCSV).join(",")).join("
+");
+const downloadCSV = (filename,csv) => {
+  const blob = new Blob([csv],{type:"text/csv;charset=utf-8;"});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url);
+};
+
+// ── Export Modal ──────────────────────────────────────────────────────────
+const ExportModal = ({open,onClose,vials,entries}) => {
+  const [done,setDone] = useState(false);
+
+  const handle = () => {
+    const ts  = new Date().toISOString().slice(0,10);
+    const fmtD = d => new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+
+    const vialsCSV = toCSV(
+      ["Name","Total (mg)","Remaining (mg)","% Left","Status","BAC Water (mL)",
+       "Std Dose (IU)","Dose Unit","Cost Paid","Notes","Added"],
+      vials.map(v=>[
+        v.name, v.total_mg, v.remaining_mg,
+        Math.round((v.remaining_mg/v.total_mg)*100)+"%",
+        v.status||"powder", v.bac_water_ml||"",
+        v.standard_dose_iu||"", v.dose_unit||"mcg",
+        v.cost_paid||"", v.notes||"", fmtD(v.created_at),
+      ])
+    );
+
+    const logCSV = toCSV(
+      ["Peptide","IU","Dose (mcg)","Volume (mL)","Injected At","Notes"],
+      entries.map(e=>[
+        e.vial_name, e.dose_iu||"", e.dose_mcg||"", e.dose_ml||"",
+        new Date(e.injected_at).toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}),
+        e.notes||"",
+      ])
+    );
+
+    const combined = [
+      `PinPal Export — ${ts}`,
+      "",
+      "=== INVENTORY ===",
+      vialsCSV,
+      "",
+      "=== INJECTION LOG ===",
+      logCSV,
+    ].join("
+");
+
+    downloadCSV(`pinpal-export-${ts}.csv`, combined);
+    setDone(true);
+    setTimeout(()=>{ setDone(false); onClose(); }, 1800);
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Export Data">
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <p style={{fontSize:14,color:T.text,margin:0}}>
+          Downloads a single <strong style={{color:T.accent}}>.csv</strong> with your full inventory and injection log. Nothing leaves your device until you choose where to save it.
+        </p>
+        {[
+          {label:"Vials",  count:vials.length,   icon:"box"},
+          {label:"Injections", count:entries.length, icon:"clock"},
+        ].map(r=>(
+          <div key={r.label} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:T.elevated,borderRadius:10,padding:"12px 14px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <Icon name={r.icon} size={16} color={T.accent}/>
+              <span style={{fontSize:14,color:T.text}}>{r.label}</span>
+            </div>
+            <span style={{fontSize:13,fontWeight:700,color:T.accent,background:T.accentDim,padding:"3px 10px",borderRadius:20}}>
+              {r.count} row{r.count!==1?"s":""}
+            </span>
+          </div>
+        ))}
+        <Btn
+          variant={done?"success":"primary"}
+          icon={done?"check":"download"}
+          style={{width:"100%",justifyContent:"center",marginTop:4}}
+          onClick={handle}>
+          {done?"Downloaded!":"Download CSV"}
+        </Btn>
+        <p style={{fontSize:11,color:T.textMute,textAlign:"center",margin:0}}>
+          Saved locally · no data sent anywhere
+        </p>
+      </div>
+    </Modal>
+  );
+};
+
+// ── XLSX Export ──────────────────────────────────────────────────────────
+const exportXLSX = async (vials, entries) => {
+  // Dynamically load SheetJS from CDN
+  if(!window.XLSX) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  const XLSX = window.XLSX;
+  const wb = XLSX.utils.book_new();
+  const ts = new Date().toLocaleDateString("en-US");
+
+  // ── Sheet 1: Inventory ─────────────────────────────────────────────────
+  const invRows = [
+    ["Name","Status","Total (mg)","Remaining (mg)","% Left","BAC Water (mL)","Std Dose (IU)","Dose Unit","Cost Paid ($)","Notes","Added"],
+    ...vials.map(v=>[
+      v.name,
+      v.status||"powder",
+      v.total_mg,
+      v.remaining_mg,
+      Math.round((v.remaining_mg/v.total_mg)*100)+"%",
+      v.bac_water_ml||"",
+      v.standard_dose_iu||"",
+      v.dose_unit||"mcg",
+      v.cost_paid||"",
+      v.notes||"",
+      new Date(v.created_at).toLocaleDateString("en-US"),
+    ])
+  ];
+  const wsInv = XLSX.utils.aoa_to_sheet(invRows);
+  wsInv["!cols"] = [20,14,12,14,8,14,13,10,12,24,12].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, wsInv, "Inventory");
+
+  // ── Sheet 2: Injection Log ─────────────────────────────────────────────
+  const logRows = [
+    ["Peptide","Date","Time","IU Drawn","Dose (mcg)","mL Drawn","Notes"],
+    ...entries.map(e=>{
+      const d = new Date(e.injected_at);
+      return [
+        e.vial_name,
+        d.toLocaleDateString("en-US"),
+        d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),
+        e.dose_iu||"",
+        e.dose_mcg||"",
+        e.dose_ml||"",
+        e.notes||"",
+      ];
+    })
+  ];
+  const wsLog = XLSX.utils.aoa_to_sheet(logRows);
+  wsLog["!cols"] = [20,12,10,10,12,10,30].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, wsLog, "Injection Log");
+
+  // ── Sheet 3: Cost Summary ──────────────────────────────────────────────
+  const costRows = [
+    ["Name","Cost Paid ($)","% Remaining","Est. Value Left ($)","Total Doses","Doses Left","Cost per Dose ($)"],
+    ...vials.map(v=>{
+      const pct = v.remaining_mg/v.total_mg;
+      const estVal = v.cost_paid ? (v.cost_paid*pct).toFixed(2) : "";
+      let totalDoses="", dosesLeft="", cpd="";
+      if(v.status==="reconstituted" && v.standard_dose_iu && v.bac_water_ml && v.total_mg){
+        const mcgPerMl = (v.total_mg*1000)/v.bac_water_ml;
+        const doseAmtMcg = mcgPerMl*(v.standard_dose_iu/100);
+        totalDoses = Math.round((v.total_mg*1000)/doseAmtMcg);
+        dosesLeft  = Math.floor((v.remaining_mg*1000)/doseAmtMcg);
+        if(v.cost_paid && totalDoses) cpd = (v.cost_paid/totalDoses).toFixed(2);
+      }
+      return [v.name, v.cost_paid||"", Math.round(pct*100)+"%", estVal, totalDoses, dosesLeft, cpd];
+    })
+  ];
+  // Totals row
+  const totalPaid = vials.reduce((s,v)=>s+(v.cost_paid||0),0);
+  const totalRem  = vials.reduce((s,v)=>s+(v.cost_paid||0)*(v.remaining_mg/v.total_mg),0);
+  costRows.push(["TOTAL", totalPaid.toFixed(2), "", totalRem.toFixed(2), "", "", ""]);
+  const wsCost = XLSX.utils.aoa_to_sheet(costRows);
+  wsCost["!cols"] = [20,13,13,18,13,11,16].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, wsCost, "Cost Summary");
+
+  // ── Sheet 4: Weekly Summary (last 4 weeks) ─────────────────────────────
+  const weekRows = [["Peptide","Week Of","Doses Taken","Total mcg","Total mg"]];
+  const toYMD = d => { const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
+  // Group entries by week
+  const byWeek = {};
+  entries.forEach(e=>{
+    const d = new Date(e.injected_at);
+    const sun = new Date(d); sun.setDate(d.getDate()-d.getDay());
+    const key = toYMD(sun)+"||"+(e.vial_id||e.vial_name)+"||"+e.vial_name;
+    if(!byWeek[key]) byWeek[key]={weekOf:sun.toLocaleDateString("en-US"),name:e.vial_name,doses:0,mcg:0};
+    byWeek[key].doses++;
+    byWeek[key].mcg += +(e.dose_mcg||0);
+  });
+  Object.values(byWeek).sort((a,b)=>new Date(b.weekOf)-new Date(a.weekOf)).forEach(r=>{
+    weekRows.push([r.name, r.weekOf, r.doses, r.mcg.toFixed(1), (r.mcg/1000).toFixed(3)]);
+  });
+  const wsWeek = XLSX.utils.aoa_to_sheet(weekRows);
+  wsWeek["!cols"] = [20,14,12,14,10].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, wsWeek, "Weekly Summary");
+
+  // ── Download ───────────────────────────────────────────────────────────
+  const dateStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `PinPal-Export-${dateStr}.xlsx`);
+};
+
 // ── Root ──────────────────────────────────────────────────────────────────
 const TABS = [
   {id:"calc",  label:"Calculator",icon:"flask"},
@@ -870,6 +1074,15 @@ export default function App() {
   const [user,setUser] = useState(null);
   const [authLoading,setAuthLoading] = useState(true);
   const [tab,setTab] = useState("inv");
+  const [exporting,setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try { await exportXLSX(vials, entries); }
+    catch(e) { console.error("Export failed:", e); alert("Export failed: "+e.message); }
+    setExporting(false);
+  };
+  const [exportOpen,setExportOpen] = useState(false);
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{ setUser(session?.user??null); setAuthLoading(false); });
@@ -888,6 +1101,7 @@ export default function App() {
   return (
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:"-apple-system,BlinkMacSystemFont,sans-serif",colorScheme:"dark"}}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}} *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;} ::-webkit-scrollbar{display:none;}`}</style>
+      <ExportModal open={exportOpen} onClose={()=>setExportOpen(false)} vials={vials} entries={entries}/>
 
       <div style={{background:`${T.surface}ee`,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`,position:"sticky",top:0,zIndex:50}}>
         <div style={{padding:"14px 18px 0",maxWidth:700,margin:"0 auto"}}>
@@ -903,6 +1117,15 @@ export default function App() {
             </div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               {lowCount>0 && <div style={{display:"flex",alignItems:"center",gap:4,background:T.redDim,borderRadius:10,padding:"5px 10px"}}><Icon name="alert" size={13} color={T.red}/><span style={{fontSize:11,fontWeight:700,color:T.red}}>{lowCount} low</span></div>}
+              <button onClick={()=>setExportOpen(true)} title="Export data" style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                <Icon name="download" size={15} color={T.textSub}/>
+              </button>
+              <button onClick={handleExport} disabled={exporting} title="Export to Excel"
+                style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",opacity:exporting?.5:1}}>
+                {exporting
+                  ? <span style={{width:14,height:14,border:"2px solid "+T.textSub,borderTopColor:T.accent,borderRadius:"50%",display:"inline-block",animation:"spin .7s linear infinite"}}/>
+                  : <Icon name="download" size={15} color={T.textSub}/>}
+              </button>
               <button onClick={()=>supabase.auth.signOut()} style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                 <Icon name="logout" size={15} color={T.textSub}/>
               </button>
