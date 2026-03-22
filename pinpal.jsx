@@ -396,10 +396,12 @@ const Inventory = ({vials,addVial,updateVial,deleteVial,reorderVials}) => {
   const [editId,setEditId] = useState(null);
   const [saving,setSaving] = useState(false);
   const [saveError,setSaveError] = useState("");
-  const EMPTY = {name:"",totalMg:"",remaining:"",dot:"#4f9eff",shape:"circle",status:"powder",bacWaterMl:"",standardDoseIu:"10",doseUnit:"mcg",costPaid:"",notes:""};
+  const EMPTY = {name:"",totalMg:"",remaining:"",dot:"#4f9eff",shape:"circle",status:"powder",bacWaterMl:"",standardDoseIu:"10",doseUnit:"mcg",doseAmount:"",costPaid:"",notes:""};
   const [form,setForm] = useState(EMPTY);
   const [collapsed,setCollapsed] = useState({reconstituted:false,powder:false});
   const toggleCollapse = k => setCollapsed(s=>({...s,[k]:!s[k]}));
+  const [dragId,setDragId] = useState(null);
+  const [dragOverId,setDragOverId] = useState(null);
 
   const save = async () => {
     if(!form.name||!form.totalMg) return;
@@ -411,7 +413,7 @@ const Inventory = ({vials,addVial,updateVial,deleteVial,reorderVials}) => {
   };
 
   const openEdit = (v) => {
-    setForm({name:v.name,totalMg:v.total_mg,remaining:v.remaining_mg,dot:v.dot||"#4f9eff",shape:v.shape||"circle",status:v.status||"powder",bacWaterMl:v.bac_water_ml||"",standardDoseIu:v.standard_dose_iu||"10",doseUnit:v.dose_unit||"mcg",costPaid:v.cost_paid||"",notes:v.notes||""});
+    setForm({name:v.name,totalMg:v.total_mg,remaining:v.remaining_mg,dot:v.dot||"#4f9eff",shape:v.shape||"circle",status:v.status||"powder",bacWaterMl:v.bac_water_ml||"",standardDoseIu:v.standard_dose_iu||"10",doseUnit:v.dose_unit||"mcg",doseAmount:"",costPaid:v.cost_paid||"",notes:v.notes||""});
     setEditId(v.id); setModal(true);
   };
 
@@ -436,19 +438,37 @@ const Inventory = ({vials,addVial,updateVial,deleteVial,reorderVials}) => {
         if(!group.length) return null;
         const isOpen = !collapsed[f.key];
 
-        const handleDragStart = (e,id) => { e.dataTransfer.setData("vialId",id); e.dataTransfer.setData("folderKey",f.key); e.dataTransfer.effectAllowed="move"; };
-        const handleDragOver  = e => { e.preventDefault(); e.dataTransfer.dropEffect="move"; };
+        const handleDragStart = (e,id) => {
+          e.dataTransfer.setData("vialId",id);
+          e.dataTransfer.setData("folderKey",f.key);
+          e.dataTransfer.effectAllowed="move";
+          setDragId(id); setDragOverId(id);
+        };
+        const handleDragOver = (e,id) => {
+          e.preventDefault(); e.dataTransfer.dropEffect="move";
+          if(id!==dragOverId) setDragOverId(id);
+        };
+        const handleDragEnd = () => { setDragId(null); setDragOverId(null); };
         const handleDrop = (e,targetId) => {
           e.preventDefault();
-          const dragId = e.dataTransfer.getData("vialId");
+          const dragged = e.dataTransfer.getData("vialId");
           const fromFolder = e.dataTransfer.getData("folderKey");
-          if(dragId===targetId||fromFolder!==f.key) return;
-          const from=group.findIndex(v=>v.id===dragId);
+          setDragId(null); setDragOverId(null);
+          if(dragged===targetId||fromFolder!==f.key) return;
+          const from=group.findIndex(v=>v.id===dragged);
           const to=group.findIndex(v=>v.id===targetId);
           if(from<0||to<0) return;
           const r=[...group]; const [m]=r.splice(from,1); r.splice(to,0,m);
           reorderVials(r);
         };
+        // Build display order with real-time visual swap
+        const displayGroup = dragId && dragOverId && dragId!==dragOverId ? (()=>{
+          const r=[...group];
+          const fi=r.findIndex(v=>v.id===dragId);
+          const ti=r.findIndex(v=>v.id===dragOverId);
+          if(fi>=0&&ti>=0){ const [m]=r.splice(fi,1); r.splice(ti,0,m); }
+          return r;
+        })() : group;
 
         return (
           <div key={f.key} style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -462,12 +482,30 @@ const Inventory = ({vials,addVial,updateVial,deleteVial,reorderVials}) => {
               <span style={{fontSize:14,color:T.textSub}}>{isOpen?"▾":"▸"}</span>
             </button>
 
-            {isOpen && group.map(v=>{
+            {isOpen && displayGroup.map(v=>{
               const p=pct(v), bar=p<25?T.red:p<50?T.amber:T.green;
               const dotC = v.dot==="rainbow"?"#bf5af2":(v.dot||T.accent);
+              const isDragging = v.id===dragId;
+              const isOver = v.id===dragOverId && v.id!==dragId;
               return (
-                <div key={v.id} draggable onDragStart={e=>handleDragStart(e,v.id)} onDragOver={handleDragOver} onDrop={e=>handleDrop(e,v.id)} style={{borderRadius:16}}>
-                <Card style={{borderLeft:`3px solid ${dotC}`,cursor:"grab"}}>
+                <div key={v.id} draggable
+                  onDragStart={e=>handleDragStart(e,v.id)}
+                  onDragOver={e=>handleDragOver(e,v.id)}
+                  onDragEnd={handleDragEnd}
+                  onDrop={e=>handleDrop(e,v.id)}
+                  style={{borderRadius:16,opacity:isDragging?.4:1,transform:isOver?"scale(1.01)":"scale(1)",transition:"transform .1s,opacity .1s"}}>
+                <Card style={{borderLeft:`3px solid ${dotC}`,cursor:"grab",borderColor:isOver?T.accent:undefined}}>
+                  {/* Drag handle row */}
+                  <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                    <div style={{display:"flex",flexDirection:"column",gap:3,paddingTop:4,flexShrink:0,cursor:"grab"}}>
+                      {[0,1,2].map(i=>(
+                        <div key={i} style={{display:"flex",gap:3}}>
+                          <span style={{width:3,height:3,borderRadius:"50%",background:T.textMute}}/>
+                          <span style={{width:3,height:3,borderRadius:"50%",background:T.textMute}}/>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{flex:1}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div style={{flex:1}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -496,8 +534,37 @@ const Inventory = ({vials,addVial,updateVial,deleteVial,reorderVials}) => {
                     <div style={{height:5,background:T.elevated,borderRadius:99}}>
                       <div style={{height:5,borderRadius:99,width:`${p}%`,background:bar}}/>
                     </div>
+                    {(()=>{
+                      if(v.status!=="reconstituted"||!v.bac_water_ml||!v.standard_dose_iu||!v.total_mg) return null;
+                      const mcgPerMl=(v.total_mg*1000)/v.bac_water_ml;
+                      const mlPerDose=v.standard_dose_iu/100;
+                      const mcgPerDose=mcgPerMl*mlPerDose;
+                      const totalDoses=Math.round((v.total_mg*1000)/mcgPerDose);
+                      const remDoses=Math.floor((v.remaining_mg*1000)/mcgPerDose);
+                      const doseBar=totalDoses>0?Math.round((remDoses/totalDoses)*100):0;
+                      const doseColor=doseBar<25?T.red:doseBar<50?T.amber:T.green;
+                      const doseLabel=mcgPerDose>=1000?(mcgPerDose/1000).toFixed(2)+" mg":mcgPerDose.toFixed(1)+" mcg";
+                      return (
+                        <div style={{marginTop:8,display:"flex",gap:6}}>
+                          <div style={{flex:1,background:T.elevated,borderRadius:8,padding:"6px 0",textAlign:"center"}}>
+                            <div style={{fontSize:13,fontWeight:800,color:doseColor}}>{remDoses}</div>
+                            <div style={{fontSize:10,color:T.textSub}}>doses left</div>
+                          </div>
+                          <div style={{flex:1,background:T.elevated,borderRadius:8,padding:"6px 0",textAlign:"center"}}>
+                            <div style={{fontSize:13,fontWeight:700,color:T.textSub}}>{totalDoses}</div>
+                            <div style={{fontSize:10,color:T.textSub}}>total doses</div>
+                          </div>
+                          <div style={{flex:1,background:T.elevated,borderRadius:8,padding:"6px 0",textAlign:"center"}}>
+                            <div style={{fontSize:13,fontWeight:700,color:T.text}}>{doseLabel}</div>
+                            <div style={{fontSize:10,color:T.textSub}}>per {v.standard_dose_iu} IU</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                   {v.notes && <p style={{marginTop:8,fontSize:12,color:T.textSub,marginBottom:0}}>{v.notes}</p>}
+                    </div>{/* end flex:1 */}
+                  </div>{/* end drag handle row */}
                 </Card>
                 </div>
               );
@@ -556,8 +623,75 @@ const Inventory = ({vials,addVial,updateVial,deleteVial,reorderVials}) => {
           <Input label="Name" placeholder="e.g. BPC-157" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/>
           <NumInput label="Total (mg)" placeholder="10" value={form.totalMg} onChange={e=>setForm(f=>({...f,totalMg:e.target.value}))}/>
           {editId && <NumInput label="Remaining (mg)" value={form.remaining} onChange={e=>setForm(f=>({...f,remaining:e.target.value}))}/>}
-          <Sel label="Status" value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))} options={[{value:"powder",label:"Powder Only"},{value:"reconstituted",label:"Reconstituted"}]}/>
-          {form.status==="reconstituted" && <NumInput label="BAC Water (mL)" placeholder="2" value={form.bacWaterMl} onChange={e=>setForm(f=>({...f,bacWaterMl:e.target.value}))}/>}
+
+          {/* Status — two button toggle */}
+          <div>
+            <label style={{fontSize:11,fontWeight:700,color:T.textSub,letterSpacing:.6,textTransform:"uppercase"}}>Status</label>
+            <div style={{display:"flex",gap:8,marginTop:8}}>
+              {[{v:"powder",label:"🧪 Powder Only"},{v:"reconstituted",label:"💉 Reconstituted"}].map(opt=>(
+                <button key={opt.v} onClick={()=>setForm(f=>({...f,status:opt.v}))}
+                  style={{flex:1,padding:"11px 8px",borderRadius:12,border:`1.5px solid ${form.status===opt.v?(opt.v==="powder"?"#888":T.amber):T.border}`,
+                    background:form.status===opt.v?(opt.v==="powder"?"rgba(180,180,180,.12)":"rgba(255,214,10,.1)"):"transparent",
+                    cursor:"pointer",fontSize:13,fontWeight:700,
+                    color:form.status===opt.v?(opt.v==="powder"?"#ccc":T.amber):T.textSub,
+                    transition:"all .15s"}}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Reconstitution calculator */}
+          {form.status==="reconstituted" && (()=>{
+            const mg=parseFloat(form.totalMg)||0;
+            const dose=parseFloat(form.doseAmount)||0;
+            const doseIU=parseFloat(form.standardDoseIu)||0;
+            const doseInMcg=form.doseUnit==="mg"?dose*1000:dose;
+            const mlPerDose=doseIU/100;
+            const bacNeeded=(doseInMcg>0&&mlPerDose>0&&mg>0)
+              ?((mg*1000)*mlPerDose)/doseInMcg
+              :null;
+            // auto-sync bacWaterMl when calculated
+            if(bacNeeded&&Math.abs((parseFloat(form.bacWaterMl)||0)-bacNeeded)>0.001){
+              setTimeout(()=>setForm(f=>({...f,bacWaterMl:bacNeeded.toFixed(2),standardDoseIu:form.standardDoseIu})),0);
+            }
+            return (
+              <div style={{background:T.elevated,borderRadius:12,padding:14,display:"flex",flexDirection:"column",gap:12,border:`1px solid ${T.border}`}}>
+                <label style={{fontSize:11,fontWeight:700,color:T.amber,letterSpacing:.6,textTransform:"uppercase"}}>Reconstitution Setup</label>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  <NumInput label="Std Dose (IU)" placeholder="10" value={form.standardDoseIu}
+                    onChange={e=>setForm(f=>({...f,standardDoseIu:e.target.value}))}/>
+                  <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                    <label style={{fontSize:11,fontWeight:700,color:T.textSub,letterSpacing:.6,textTransform:"uppercase"}}>Dose Unit</label>
+                    <div style={{display:"flex",height:42,borderRadius:10,overflow:"hidden",border:`1.5px solid ${T.border}`}}>
+                      {["mcg","mg"].map(u=>(
+                        <button key={u} onClick={()=>setForm(f=>({...f,doseUnit:u}))}
+                          style={{flex:1,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,
+                            background:form.doseUnit===u?T.accent:"transparent",
+                            color:form.doseUnit===u?"#fff":T.textSub}}>
+                          {u}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <NumInput label={`Desired Dose (${form.doseUnit})`}
+                  placeholder={form.doseUnit==="mcg"?"e.g. 250":"e.g. 0.25"}
+                  value={form.doseAmount||""}
+                  onChange={e=>setForm(f=>({...f,doseAmount:e.target.value}))}/>
+                {bacNeeded!==null&&bacNeeded>0?(
+                  <div style={{background:"rgba(255,214,10,.08)",borderRadius:10,padding:"12px 14px",border:"1px solid rgba(255,214,10,.2)"}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.amber,letterSpacing:.6,textTransform:"uppercase",marginBottom:4}}>Add this much BAC water</div>
+                    <div style={{fontSize:28,fontWeight:900,color:T.amber}}>{bacNeeded.toFixed(2)} <span style={{fontSize:14,color:T.textSub}}>mL</span></div>
+                    <div style={{fontSize:12,color:T.textSub,marginTop:2}}>Every {doseIU} IU = {form.doseUnit==="mg"?(doseInMcg/1000).toFixed(3)+" mg":doseInMcg.toFixed(1)+" mcg"}</div>
+                  </div>
+                ):(
+                  <div style={{fontSize:12,color:T.textMute,textAlign:"center"}}>Enter total mg, standard dose IU, and desired dose amount above.</div>
+                )}
+              </div>
+            );
+          })()}
+
           <NumInput label="Cost Paid ($, optional)" placeholder="45.00" value={form.costPaid} onChange={e=>setForm(f=>({...f,costPaid:e.target.value}))}/>
           <Input label="Notes (optional)" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))}/>
           {saveError && <div style={{background:T.redDim,borderRadius:10,padding:"10px 14px",fontSize:13,color:T.red}}>{saveError}</div>}
