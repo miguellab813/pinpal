@@ -346,6 +346,31 @@ const Calculator = () => {
   );
 };
 
+// ── Presets + dot renderer ────────────────────────────────────────────────
+const PRESETS = [
+  {name:"BPC-157",           totalMg:10,  unit:"mg",    dot:"#4caf72", shape:"circle"},
+  {name:"TB-500",            totalMg:10,  unit:"mg",    dot:"#1a7a3c", shape:"circle"},
+  {name:"GHK-Cu",            totalMg:50,  unit:"mg",    dot:"#2255cc", shape:"circle"},
+  {name:"GLOW Blend",        totalMg:70,  unit:"mg",    dot:"rainbow", shape:"square"},
+  {name:"Melanotan-1",       totalMg:10,  unit:"mg",    dot:"#e07020", shape:"circle"},
+  {name:"CJC-1295 nDAC+Ipa", totalMg:10,  unit:"mg",    dot:"#e8e8e8", shape:"circle"},
+  {name:"Sermorelin",        totalMg:10,  unit:"mg",    dot:"#e8e8e8", shape:"circle"},
+  {name:"Tesamorelin",       totalMg:10,  unit:"mg",    dot:"#e8e8e8", shape:"circle"},
+  {name:"NAD+",              totalMg:500, unit:"mg",    dot:"#888888", shape:"diamond"},
+  {name:"Tirzepatide",       totalMg:10,  unit:"mg",    dot:"#e03030", shape:"circle"},
+  {name:"Retatrutide",       totalMg:10,  unit:"mg",    dot:"#e03030", shape:"circle"},
+  {name:"L-Carnitine",       totalMg:500, unit:"mg/mL", dot:"#e0c020", shape:"circle"},
+];
+
+const DotIcon = ({dot, shape="circle", size=9}) => {
+  const base = {width:size, height:size, display:"inline-block", flexShrink:0,
+    borderRadius: shape==="circle"?"50%": shape==="diamond"?"2px":"3px",
+    transform: shape==="diamond"?"rotate(45deg)":"none"};
+  if(dot==="rainbow") return <span style={{...base, width:size+2, height:size+2,
+    background:"linear-gradient(135deg,#ff453a,#ff9f0a,#30d158,#4f9eff,#bf5af2)"}}/>;
+  return <span style={{...base, background:dot}}/>;
+};
+
 // ── Inventory ─────────────────────────────────────────────────────────────
 const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
   const [modal,setModal] = useState(false);
@@ -439,6 +464,51 @@ const Inventory = ({vials,addVial,updateVial,deleteVial}) => {
 
       <Modal open={modal} onClose={()=>{setModal(false);setSaveError("");}} title={editId?"Edit Vial":"Add Vial"}>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
+
+          {/* Quick-add presets — new vials only */}
+          {!editId && (
+            <div>
+              <label style={{fontSize:11,fontWeight:700,color:T.textSub,letterSpacing:.6,textTransform:"uppercase"}}>Quick Add</label>
+              <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:8}}>
+                {PRESETS.map(p=>(
+                  <button key={p.name}
+                    onClick={()=>setForm(f=>({...f,name:p.name,totalMg:String(p.totalMg),dot:p.dot,shape:p.shape}))}
+                    style={{display:"flex",alignItems:"center",gap:10,
+                      background:form.name===p.name?T.accentDim:T.elevated,
+                      border:`1.5px solid ${form.name===p.name?T.accent:T.border}`,
+                      borderRadius:10,padding:"9px 14px",cursor:"pointer",textAlign:"left",transition:"all .15s"}}>
+                    <DotIcon dot={p.dot} shape={p.shape} size={10}/>
+                    <span style={{fontSize:14,fontWeight:600,color:T.text,flex:1}}>{p.name}</span>
+                    <span style={{fontSize:12,color:T.textSub}}>{p.totalMg} {p.unit}</span>
+                  </button>
+                ))}
+              </div>
+              <div style={{height:1,background:T.border,margin:"14px 0 0"}}/>
+            </div>
+          )}
+
+          {/* Dot color row */}
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <label style={{fontSize:11,fontWeight:700,color:T.textSub,letterSpacing:.6,textTransform:"uppercase",flexShrink:0}}>Color</label>
+            {[
+              {dot:"#4caf72",shape:"circle"},{dot:"#1a7a3c",shape:"circle"},
+              {dot:"#2255cc",shape:"circle"},{dot:"#e07020",shape:"circle"},
+              {dot:"#e03030",shape:"circle"},{dot:"#e0c020",shape:"circle"},
+              {dot:"#888888",shape:"diamond"},{dot:"#e8e8e8",shape:"circle"},
+              {dot:"rainbow",shape:"square"},{dot:"#4f9eff",shape:"circle"},
+              {dot:"#bf5af2",shape:"circle"},
+            ].map(opt=>(
+              <button key={opt.dot} onClick={()=>setForm(f=>({...f,dot:opt.dot,shape:opt.shape}))}
+                style={{width:24,height:24,padding:0,border:form.dot===opt.dot?"2.5px solid #fff":"2.5px solid transparent",
+                  borderRadius:4,cursor:"pointer",background:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <DotIcon dot={opt.dot} shape={opt.shape} size={15}/>
+              </button>
+            ))}
+            <input type="color" value={form.dot&&form.dot!=="rainbow"?form.dot:"#4f9eff"}
+              onChange={e=>setForm(f=>({...f,dot:e.target.value,shape:"circle"}))}
+              style={{width:24,height:24,padding:0,border:"none",borderRadius:4,cursor:"pointer",background:"transparent"}}/>
+          </div>
+
           <Input label="Name" placeholder="e.g. BPC-157" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/>
           <NumInput label="Total (mg)" placeholder="10" value={form.totalMg} onChange={e=>setForm(f=>({...f,totalMg:e.target.value}))}/>
           {editId && <NumInput label="Remaining (mg)" value={form.remaining} onChange={e=>setForm(f=>({...f,remaining:e.target.value}))}/>}
