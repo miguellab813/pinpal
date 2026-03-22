@@ -454,14 +454,12 @@ const Inventory = ({vials,addVial,updateVial,deleteVial,reorderVials}) => {
           <div key={f.key} style={{display:"flex",flexDirection:"column",gap:8}}>
             {/* Folder header — tappable to collapse */}
             <button onClick={()=>toggleCollapse(f.key)}
-              style={{display:"flex",alignItems:"center",gap:6,paddingLeft:2,background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
-              <span>{f.icon}</span>
-              <span style={{fontSize:11,fontWeight:800,color:f.color,textTransform:"uppercase",letterSpacing:.8}}>{f.label}</span>
-              <span style={{fontSize:11,color:T.textMute}}>({group.length})</span>
-              <span style={{fontSize:11,color:T.textMute,marginLeft:"auto"}}>
-                {isOpen?"▾":"▸"}
-              </span>
-              {isOpen && group.length>1 && <span style={{fontSize:10,color:T.textMute}}>drag to reorder</span>}
+              style={{display:"flex",alignItems:"center",gap:8,padding:"12px 14px",background:T.elevated,border:`1px solid ${T.border}`,borderRadius:12,cursor:"pointer",textAlign:"left",width:"100%"}}>
+              <span style={{fontSize:16}}>{f.icon}</span>
+              <span style={{fontSize:13,fontWeight:800,color:f.color,textTransform:"uppercase",letterSpacing:.6,flex:1}}>{f.label}</span>
+              <span style={{fontSize:12,color:T.textMute,fontWeight:600}}>({group.length})</span>
+              {isOpen && group.length>1 && <span style={{fontSize:10,color:T.textMute,marginRight:4}}>drag</span>}
+              <span style={{fontSize:14,color:T.textSub}}>{isOpen?"▾":"▸"}</span>
             </button>
 
             {isOpen && group.map(v=>{
@@ -986,7 +984,7 @@ export default function App() {
       <style>{`@keyframes spin{to{transform:rotate(360deg)}} *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;} ::-webkit-scrollbar{display:none;}`}</style>
       <ExportModal open={exportOpen} onClose={()=>setExportOpen(false)} vials={vials} entries={entries}/>
 
-      <div style={{background:`${T.surface}ee`,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`,position:"sticky",top:0,zIndex:50}}>
+      <div style={{background:`${T.surface}ee`,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`,position:"sticky",top:0,zIndex:50,paddingTop:"env(safe-area-inset-top)"}}>
         <div style={{padding:"14px 18px 0",maxWidth:700,margin:"0 auto"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -1000,12 +998,7 @@ export default function App() {
             </div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               {lowCount>0 && <div style={{display:"flex",alignItems:"center",gap:4,background:T.redDim,borderRadius:10,padding:"5px 10px"}}><Icon name="alert" size={13} color={T.red}/><span style={{fontSize:11,fontWeight:700,color:T.red}}>{lowCount} low</span></div>}
-              <button onClick={()=>setExportOpen(true)} title="Export data" style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
-                <Icon name="download" size={15} color={T.textSub}/>
-              </button>
-              
-              <button onClick={()=>setExportOpen(true)} title="Export CSV"
-                style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+              <button onClick={()=>setExportOpen(true)} title="Export CSV" style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                 <Icon name="download" size={15} color={T.textSub}/>
               </button>
               <button onClick={()=>supabase.auth.signOut()} style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
