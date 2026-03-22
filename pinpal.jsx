@@ -863,11 +863,9 @@ const Calendar = ({vials,entries}) => {
 const escapeCSV = v => {
   if(v===null||v===undefined) return "";
   const s = String(v);
-  return (s.includes(",")||s.includes('"')||s.includes("
-")) ? `"${s.replace(/"/g,'""')}"` : s;
+  return (s.includes(",")||s.includes('"')||s.includes("\n")) ? `"${s.replace(/"/g,'""')}"` : s;
 };
-const toCSV = (headers,rows) => [headers,...rows].map(r=>r.map(escapeCSV).join(",")).join("
-");
+const toCSV = (headers,rows) => [headers,...rows].map(r=>r.map(escapeCSV).join(",")).join("\n");
 const downloadCSV = (filename,csv) => {
   const blob = new Blob([csv],{type:"text/csv;charset=utf-8;"});
   const url  = URL.createObjectURL(blob);
