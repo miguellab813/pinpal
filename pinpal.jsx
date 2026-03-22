@@ -910,8 +910,7 @@ const ExportModal = ({open,onClose,vials,entries}) => {
       "",
       "=== INJECTION LOG ===",
       logCSV,
-    ].join("
-");
+    ].join("\n");
 
     downloadCSV(`pinpal-export-${ts}.csv`, combined);
     setDone(true);
@@ -966,14 +965,6 @@ export default function App() {
   const [user,setUser] = useState(null);
   const [authLoading,setAuthLoading] = useState(true);
   const [tab,setTab] = useState("inv");
-  const [exporting,setExporting] = useState(false);
-
-  const handleExport = async () => {
-    setExporting(true);
-    try { await exportXLSX(vials, entries); }
-    catch(e) { console.error("Export failed:", e); alert("Export failed: "+e.message); }
-    setExporting(false);
-  };
   const [exportOpen,setExportOpen] = useState(false);
 
   useEffect(()=>{
@@ -1012,11 +1003,10 @@ export default function App() {
               <button onClick={()=>setExportOpen(true)} title="Export data" style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                 <Icon name="download" size={15} color={T.textSub}/>
               </button>
-              <button onClick={handleExport} disabled={exporting} title="Export to Excel"
-                style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",opacity:exporting?.5:1}}>
-                {exporting
-                  ? <span style={{width:14,height:14,border:"2px solid "+T.textSub,borderTopColor:T.accent,borderRadius:"50%",display:"inline-block",animation:"spin .7s linear infinite"}}/>
-                  : <Icon name="download" size={15} color={T.textSub}/>}
+              
+              <button onClick={()=>setExportOpen(true)} title="Export CSV"
+                style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                <Icon name="download" size={15} color={T.textSub}/>
               </button>
               <button onClick={()=>supabase.auth.signOut()} style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:10,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                 <Icon name="logout" size={15} color={T.textSub}/>
