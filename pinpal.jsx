@@ -14,6 +14,7 @@ const T = {
   text:"#f2f2f7", textSub:"#d0d0d8", textMute:"#888898",
 };
 
+const fmtUSD = (n) => (+n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmt = (d) => new Date(d).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
 const fmtDate = (d) => new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
 const localNow = () => {
@@ -460,77 +461,96 @@ const Inventory = ({vials,addVial,updateVial,deleteVial,reorderVials}) => {
               const p=pct(v), bar=p<25?T.red:p<50?T.amber:T.green;
               const dotC = v.dot==="rainbow"?"#bf5af2":(v.dot||T.accent);
               return (
-                <Card key={v.id} style={{borderLeft:`3px solid ${dotC}`}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                    <div style={{flex:1}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                        <span style={{width:9,height:9,borderRadius:"50%",background:dotC,display:"inline-block"}}/>
-                        <span style={{fontSize:16,fontWeight:800,color:T.text}}>{v.name}</span>
-                        <span style={{fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:.6,padding:"2px 7px",borderRadius:6,
+                <Card key={v.id} style={{borderLeft:`3px solid ${dotC}`,padding:"10px 12px"}}>
+                  {/* Three-column layout: arrows | content | actions */}
+                  <div style={{display:"flex",gap:8,alignItems:"stretch"}}>
+
+                    {/* LEFT — up/down arrows */}
+                    {group.length>1 ? (
+                      <div style={{display:"flex",flexDirection:"column",gap:2,justifyContent:"center",flexShrink:0}}>
+                        <button onClick={()=>moveVial(v.id,-1)} disabled={idx===0}
+                          style={{width:24,height:24,borderRadius:5,border:`1px solid ${T.border}`,background:T.elevated,cursor:idx===0?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:idx===0?.2:1}}>
+                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke={T.text} strokeWidth={2.5} strokeLinecap="round"><path d="M18 15l-6-6-6 6"/></svg>
+                        </button>
+                        <button onClick={()=>moveVial(v.id,1)} disabled={idx===group.length-1}
+                          style={{width:24,height:24,borderRadius:5,border:`1px solid ${T.border}`,background:T.elevated,cursor:idx===group.length-1?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:idx===group.length-1?.2:1}}>
+                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke={T.text} strokeWidth={2.5} strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                      </div>
+                    ) : <div style={{width:24}}/>}
+
+                    {/* MIDDLE — all content */}
+                    <div style={{flex:1,minWidth:0}}>
+                      {/* Row 1: label + date */}
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                        <span style={{fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:.6,padding:"1px 6px",borderRadius:4,
                           background:v.status==="reconstituted"?"rgba(255,214,10,.15)":"rgba(180,180,180,.12)",
-                          color:v.status==="reconstituted"?T.amber:"#aaa",
-                          border:`1px solid ${v.status==="reconstituted"?"rgba(255,214,10,.25)":"rgba(180,180,180,.2)"}`}}>
+                          color:v.status==="reconstituted"?T.amber:"#888",
+                          border:`1px solid ${v.status==="reconstituted"?"rgba(255,214,10,.25)":"rgba(180,180,180,.18)"}`}}>
                           {v.status==="reconstituted"?"Reconstituted":"Powder Only"}
                         </span>
-                        {p<25 && <Badge bg={T.redDim} color={T.red}>Low</Badge>}
+                        {p<25 && <span style={{fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:.5,padding:"1px 6px",borderRadius:4,background:T.redDim,color:T.red,border:`1px solid ${T.red}44`}}>Low</span>}
+                        <span style={{fontSize:10,color:T.textMute,marginLeft:"auto"}}>{fmtDate(v.created_at)}</span>
                       </div>
-                      <span style={{fontSize:12,color:T.textSub}}>{v.total_mg} mg · {fmtDate(v.created_at)}</span>
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:4,marginLeft:8}}>
-                      {/* Up/down arrows */}
-                      {group.length>1 && (
-                        <div style={{display:"flex",flexDirection:"column",gap:2}}>
-                          <button onClick={()=>moveVial(v.id,-1)} disabled={idx===0}
-                            style={{width:28,height:28,borderRadius:6,border:`1px solid ${T.border}`,background:T.elevated,cursor:idx===0?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:idx===0?.25:1}}>
-                            <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={T.text} strokeWidth={2.5} strokeLinecap="round"><path d="M18 15l-6-6-6 6"/></svg>
-                          </button>
-                          <button onClick={()=>moveVial(v.id,1)} disabled={idx===group.length-1}
-                            style={{width:28,height:28,borderRadius:6,border:`1px solid ${T.border}`,background:T.elevated,cursor:idx===group.length-1?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:idx===group.length-1?.25:1}}>
-                            <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={T.text} strokeWidth={2.5} strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
-                          </button>
+                      {/* Row 2: dot + name + total mg */}
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                        <span style={{width:8,height:8,borderRadius:"50%",background:dotC,flexShrink:0}}/>
+                        <span style={{fontSize:15,fontWeight:800,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v.name}</span>
+                        <span style={{fontSize:11,color:T.textSub,flexShrink:0}}>{v.total_mg} mg</span>
+                      </div>
+                      {/* Row 3: progress bar */}
+                      <div style={{marginBottom:2}}>
+                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                          <span style={{fontSize:10,color:T.textSub}}>Remaining</span>
+                          <span style={{fontSize:10,fontWeight:700,color:bar}}>{v.remaining_mg} mg ({p}%)</span>
                         </div>
-                      )}
-                      <button onClick={()=>openEdit(v)} style={{width:28,height:28,background:T.elevated,border:`1px solid ${T.border}`,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><Icon name="edit" size={13} color={T.textSub}/></button>
-                      <button onClick={()=>deleteVial(v.id)} style={{width:28,height:28,background:T.redDim,border:"none",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><Icon name="trash" size={13} color={T.red}/></button>
-                    </div>
-                  </div>
-                  <div style={{marginTop:12}}>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
-                      <span style={{fontSize:12,color:T.textSub}}>Remaining</span>
-                      <span style={{fontSize:12,fontWeight:700,color:bar}}>{v.remaining_mg} mg ({p}%)</span>
-                    </div>
-                    <div style={{height:5,background:T.elevated,borderRadius:99}}>
-                      <div style={{height:5,borderRadius:99,width:`${p}%`,background:bar}}/>
-                    </div>
-                    {(()=>{
-                      if(v.status!=="reconstituted"||!v.bac_water_ml||!v.standard_dose_iu||!v.total_mg) return null;
-                      const mcgPerMl=(v.total_mg*1000)/v.bac_water_ml;
-                      const mlPerDose=v.standard_dose_iu/100;
-                      const mcgPerDose=mcgPerMl*mlPerDose;
-                      const totalDoses=Math.round((v.total_mg*1000)/mcgPerDose);
-                      const remDoses=Math.floor((v.remaining_mg*1000)/mcgPerDose);
-                      const doseBar=totalDoses>0?Math.round((remDoses/totalDoses)*100):0;
-                      const doseColor=doseBar<25?T.red:doseBar<50?T.amber:T.green;
-                      const doseLabel=mcgPerDose>=1000?(mcgPerDose/1000).toFixed(2)+" mg":mcgPerDose.toFixed(1)+" mcg";
-                      return (
-                        <div style={{marginTop:8,display:"flex",gap:6}}>
-                          <div style={{flex:1,background:T.elevated,borderRadius:8,padding:"6px 0",textAlign:"center"}}>
-                            <div style={{fontSize:13,fontWeight:800,color:doseColor}}>{remDoses}</div>
-                            <div style={{fontSize:10,color:T.textSub}}>doses left</div>
-                          </div>
-                          <div style={{flex:1,background:T.elevated,borderRadius:8,padding:"6px 0",textAlign:"center"}}>
-                            <div style={{fontSize:13,fontWeight:700,color:T.textSub}}>{totalDoses}</div>
-                            <div style={{fontSize:10,color:T.textSub}}>total doses</div>
-                          </div>
-                          <div style={{flex:1,background:T.elevated,borderRadius:8,padding:"6px 0",textAlign:"center"}}>
-                            <div style={{fontSize:13,fontWeight:700,color:T.text}}>{doseLabel}</div>
-                            <div style={{fontSize:10,color:T.textSub}}>per {v.standard_dose_iu} IU</div>
-                          </div>
+                        <div style={{height:4,background:T.elevated,borderRadius:99}}>
+                          <div style={{height:4,borderRadius:99,width:`${p}%`,background:bar}}/>
                         </div>
-                      );
-                    })()}
+                      </div>
+                      {/* Row 4: dose stats (reconstituted only) */}
+                      {(()=>{
+                        if(v.status!=="reconstituted"||!v.bac_water_ml||!v.standard_dose_iu||!v.total_mg) return null;
+                        const mcgPerMl=(v.total_mg*1000)/v.bac_water_ml;
+                        const mlPerDose=v.standard_dose_iu/100;
+                        const mcgPerDose=mcgPerMl*mlPerDose;
+                        const totalDoses=Math.round((v.total_mg*1000)/mcgPerDose);
+                        const remDoses=Math.floor((v.remaining_mg*1000)/mcgPerDose);
+                        const doseColor=remDoses/totalDoses<.25?T.red:remDoses/totalDoses<.5?T.amber:T.green;
+                        const doseLabel=mcgPerDose>=1000?(mcgPerDose/1000).toFixed(2)+" mg":mcgPerDose.toFixed(1)+" mcg";
+                        return (
+                          <div style={{display:"flex",gap:4,marginTop:6}}>
+                            <div style={{flex:1,background:T.elevated,borderRadius:6,padding:"4px 0",textAlign:"center"}}>
+                              <div style={{fontSize:12,fontWeight:800,color:doseColor}}>{remDoses}</div>
+                              <div style={{fontSize:9,color:T.textSub}}>doses left</div>
+                            </div>
+                            <div style={{flex:1,background:T.elevated,borderRadius:6,padding:"4px 0",textAlign:"center"}}>
+                              <div style={{fontSize:12,fontWeight:700,color:T.textSub}}>{totalDoses}</div>
+                              <div style={{fontSize:9,color:T.textSub}}>total</div>
+                            </div>
+                            <div style={{flex:1,background:T.elevated,borderRadius:6,padding:"4px 0",textAlign:"center"}}>
+                              <div style={{fontSize:12,fontWeight:700,color:T.text}}>{doseLabel}</div>
+                              <div style={{fontSize:9,color:T.textSub}}>per {v.standard_dose_iu} IU</div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      {v.notes && <p style={{margin:"4px 0 0",fontSize:11,color:T.textSub}}>{v.notes}</p>}
+                    </div>
+
+                    {/* RIGHT — edit + delete */}
+                    <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
+                      <button onClick={()=>openEdit(v)}
+                        style={{width:26,height:26,background:T.elevated,border:`1px solid ${T.border}`,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                        <Icon name="edit" size={12} color={T.textSub}/>
+                      </button>
+                      <button onClick={()=>{ if(window.confirm(`Delete ${v.name}?`)) deleteVial(v.id); }}
+                        style={{width:26,height:26,background:T.redDim,border:"none",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                        <Icon name="trash" size={12} color={T.red}/>
+                      </button>
+                    </div>
+
                   </div>
-                  {v.notes && <p style={{marginTop:8,fontSize:12,color:T.textSub,marginBottom:0}}>{v.notes}</p>}
                 </Card>
               );
             })}
@@ -797,9 +817,9 @@ const Cost = ({vials,updateVial,reorderVials}) => {
       <Card style={{background:"linear-gradient(135deg,#1a2a1a,#1a1a2a)"}}>
         <div style={{display:"flex",justifyContent:"space-between"}}>
           <div><div style={{fontSize:11,fontWeight:700,color:T.textSub,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Total Paid</div>
-            <div style={{fontSize:28,fontWeight:900,color:T.text}}>${totalVal.toFixed(2)}</div></div>
+            <div style={{fontSize:28,fontWeight:900,color:T.text}}>${fmtUSD(totalVal)}</div></div>
           <div style={{textAlign:"right"}}><div style={{fontSize:11,fontWeight:700,color:T.textSub,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Remaining Value</div>
-            <div style={{fontSize:24,fontWeight:800,color:T.green}}>${remVal.toFixed(2)}</div></div>
+            <div style={{fontSize:24,fontWeight:800,color:T.green}}>${fmtUSD(remVal)}</div></div>
         </div>
       </Card>
       {vials.length===0 && <Card style={{textAlign:"center",padding:48}}><p style={{color:T.textSub,margin:0}}>Add vials first.</p></Card>}
@@ -819,7 +839,7 @@ const Cost = ({vials,updateVial,reorderVials}) => {
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",marginTop:3}}>
                   <span style={{fontSize:11,color:T.textSub}}>{v.remaining_mg} mg ({p}%)</span>
-                  {c && <span style={{fontSize:11,color:T.amber,fontWeight:700}}>${c.toFixed(2)}/dose</span>}
+                  {c && <span style={{fontSize:11,color:T.amber,fontWeight:700}}>${fmtUSD(c)}/dose</span>}
                 </div>
               </div>
               <div style={{flexShrink:0}}>
@@ -836,7 +856,7 @@ const Cost = ({vials,updateVial,reorderVials}) => {
                 ):(
                   <button onClick={()=>{setEditId(v.id);setEditVal(v.cost_paid||"");}}
                     style={{background:T.elevated,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-                    <span style={{fontSize:13,fontWeight:700,color:v.cost_paid?T.text:T.textSub}}>{v.cost_paid?`$${(+v.cost_paid).toFixed(2)}`:"Add $"}</span>
+                    <span style={{fontSize:13,fontWeight:700,color:v.cost_paid?T.text:T.textSub}}>{v.cost_paid?`$${fmtUSD(v.cost_paid)}`:"Add $"}</span>
                     <Icon name="edit" size={12} color={T.textSub}/>
                   </button>
                 )}
