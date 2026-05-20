@@ -452,7 +452,7 @@ const Inventory = ({vials,addVial,updateVial,deleteVial,reorderVials}) => {
   const [saveError,setSaveError] = useState("");
   const EMPTY = {name:"",totalMg:"",remaining:"",dot:"#4f9eff",shape:"circle",status:"powder",bacWaterMl:"",standardDoseIu:"10",doseUnit:"mcg",doseAmount:"",costPaid:"",notes:""};
   const [form,setForm] = useState(EMPTY);
-  const [collapsed,setCollapsed] = useState({reconstituted:false,powder:false});
+  const [collapsed,setCollapsed] = useState({reconstituted:false,powder:true});
   const toggleCollapse = k => setCollapsed(s=>({...s,[k]:!s[k]}));
 
   const save = async () => {
@@ -922,24 +922,27 @@ const Cost = ({vials,updateVial,reorderVials}) => {
   );
 };
 
-// ── Half-life data (hours) ───────────────────────────────────────────────
+// ── Half-life data ───────────────────────────────────────────────────────
+// hl = linear clearance window in hours (reaches 0 at hl hours)
+// Linear decay: active = dose * max(0, 1 - hoursSince/hl)
 const HALF_LIVES = {
-  "BPC-157":          {hl:4,   type:"short"},
-  "TB-500":           {hl:168, type:"long"},   // ~7 days
-  "GHK-Cu":           {hl:1.5, type:"short"},
-  "GLOW Blend":       {hl:168, type:"long"},   // TB-500 dominant
-  "Melanotan-1":      {hl:22,  type:"medium"},
-  "CJC-1295 nDAC+Ipa":{hl:2,   type:"short"},
-  "Sermorelin":       {hl:.25, type:"short"},
-  "Tesamorelin":      {hl:.43, type:"short"},
-  "NAD+":             {hl:1.5, type:"short"},
-  "Tirzepatide":      {hl:120, type:"long"},   // ~5 days
-  "Retatrutide":      {hl:144, type:"long"},   // ~6 days
-  "L-Carnitine":      {hl:6,   type:"medium"},
+  "BPC-157":           {hl:6,    type:"short"},
+  "TB-500":            {hl:2,    type:"short"},  // circulation; tissue retention separate
+  "GHK-Cu":            {hl:0.58, type:"short"},  // ~35 min
+  "GLOW Blend":        {hl:120,  type:"long"},   // use Tirzepatide-like for blend display
+  "Melanotan-1":       {hl:1.5,  type:"short"},  // ~90 min
+  "CJC-1295 nDAC+Ipa": {hl:2,    type:"short"},  // Ipamorelin dominant ~2hr
+  "Sermorelin":        {hl:0.33, type:"short"},  // ~20 min
+  "Tesamorelin":       {hl:0.43, type:"short"},  // ~26 min
+  "NAD+":              {hl:1,    type:"short"},
+  "Tirzepatide":       {hl:120,  type:"long"},   // 5 days
+  "Retatrutide":       {hl:144,  type:"long"},   // 6 days
+  "L-Carnitine":       {hl:17.6, type:"medium"},
 };
-// % remaining after t hours given half-life hl
+
+// Linear decay to 0 at hl hours (not exponential)
 const activeAt = (doseMcg, hl, hoursSince) =>
-  doseMcg * Math.pow(0.5, hoursSince / hl);
+  doseMcg * Math.max(0, 1 - hoursSince / hl);
 
 // ── Calendar ──────────────────────────────────────────────────────────────
 const Calendar = ({vials,entries}) => {
@@ -1054,9 +1057,9 @@ const Calendar = ({vials,entries}) => {
           if(isGlow){
             // Split GLOW into components by mass fraction (10+10+50=70mg total)
             const components = [
-              {cname:"BPC-157 (GLOW)",  dot:"#4caf72", frac:10/70, hlh:4,   hlType:"short"},
-              {cname:"TB-500 (GLOW)",   dot:"#1a7a3c", frac:10/70, hlh:168, hlType:"long"},
-              {cname:"GHK-Cu (GLOW)",   dot:"#2255cc", frac:50/70, hlh:1.5, hlType:"short"},
+              {cname:"BPC-157 (GLOW)",  dot:"#4caf72", frac:10/70, hlh:6,    hlType:"short"},
+              {cname:"TB-500 (GLOW)",   dot:"#1a7a3c", frac:10/70, hlh:2,    hlType:"short"},
+              {cname:"GHK-Cu (GLOW)",   dot:"#2255cc", frac:50/70, hlh:0.58, hlType:"short"},
             ];
             components.forEach(c=>{
               const compDose = +e.dose_mcg * c.frac;
@@ -1089,7 +1092,8 @@ const Calendar = ({vials,entries}) => {
                 ?(a.active/1000).toFixed(3)+" mg"
                 :a.active.toFixed(1)+" mcg";
               // % of last single dose still active (rough feel metric)
-              const pctActive = Math.min(100, (a.active / a.lastDose) * 100);
+              // Linear: pct = max(0, active/lastDose * 100), already 0 if cleared
+              const pctActive = Math.min(100, Math.max(0, (a.active / Math.max(a.lastDose, 0.001)) * 100));
               const barColor = pctActive>60?T.green:pctActive>25?T.amber:T.red;
               const hlLabel = a.hl>=24
                 ?(a.hl/24).toFixed(1)+"d half-life"
