@@ -313,55 +313,108 @@ const useLog = (userId) => {
 
 // ── Calculator ────────────────────────────────────────────────────────────
 const Calculator = () => {
-  const [mg,setMg] = useState("");
-  const [bac,setBac] = useState(1);
-  const [mcg,setMcg] = useState("");
-  const [iu,setIu] = useState("100");
-  const [result,setResult] = useState(null);
+  // Top panel: powder + BAC → dose per 10 IU
+  const [t_mg,  setTMg]  = useState("");
+  const [t_bac, setTBac] = useState("");
+  const t_result = (() => {
+    const m=parseFloat(t_mg), b=parseFloat(t_bac);
+    if(!m||!b||b<=0) return null;
+    const mcgPer10 = (m*1000/b) * (10/100); // 10 IU = 0.1 mL on 100IU syringe
+    return mcgPer10;
+  })();
 
-  const calc = () => {
-    const m=parseFloat(mg),b=parseFloat(bac),d=parseFloat(mcg),s=parseFloat(iu);
-    if(!m||!b||!d||!s) return;
-    const cpm=(m*1000)/b, ml=d/cpm;
-    setResult({cpm,ml,iuNeeded:ml*s});
-  };
+  // Bottom panel: powder + desired dose → how much BAC water
+  const [b_mg,   setBMg]   = useState("");
+  const [b_dose, setBDose] = useState("");
+  const [b_unit, setBUnit] = useState("mcg");
+  const b_result = (() => {
+    const m=parseFloat(b_mg);
+    const d=parseFloat(b_dose);
+    if(!m||!d||d<=0) return null;
+    const doseInMcg = b_unit==="mg" ? d*1000 : d;
+    // 10 IU draw = 0.1 mL; dose per 10 IU = conc * 0.1
+    // conc = m*1000 / bacMl  →  bacMl = m*1000*0.1 / doseInMcg
+    const bacMl = (m*1000*0.1) / doseInMcg;
+    return bacMl;
+  })();
 
-  const stepBac = (dir) => setBac(v=>Math.max(0.5,parseFloat((v+dir*.5).toFixed(1))));
+  const rowSep = {height:1,background:T.border,margin:"10px 0"};
+  const resultBox = (label, value, unit, big=false) => (
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"7px 0",borderBottom:`1px solid ${T.border}`}}>
+      <span style={{fontSize:13,color:T.textSub}}>{label}</span>
+      {big
+        ? <span style={{fontSize:28,fontWeight:900,color:T.accent,letterSpacing:-1}}>{value} <span style={{fontSize:13,color:T.textSub}}>{unit}</span></span>
+        : <span style={{fontSize:14,fontWeight:700,color:T.text}}>{value} <span style={{fontSize:12,color:T.textSub}}>{unit}</span></span>
+      }
+    </div>
+  );
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+
+      {/* ── TOP: Powder + BAC → dose per 10 IU ── */}
       <Card>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <NumInput label="Peptide (mg)" placeholder="5" value={mg} onChange={e=>setMg(e.target.value)}/>
-          <NumInput label="Desired Dose (mcg)" placeholder="250" value={mcg} onChange={e=>setMcg(e.target.value)}/>
+        <div style={{fontSize:12,fontWeight:800,color:T.accent,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>
+          Dose Finder — what am I injecting?
         </div>
-        <div style={{marginTop:12}}>
-          <label style={{fontSize:11,fontWeight:700,color:T.textSub,letterSpacing:.6,textTransform:"uppercase"}}>BAC Water (mL)</label>
-          <div style={{display:"flex",gap:8,marginTop:5,alignItems:"center"}}>
-            <button onClick={()=>stepBac(-1)} style={{width:40,height:40,borderRadius:10,border:"none",background:T.elevated,color:T.text,fontSize:22,cursor:"pointer"}}>−</button>
-            <div style={{flex:1,textAlign:"center",background:T.elevated,borderRadius:10,padding:"10px",border:`1.5px solid ${T.border}`,fontSize:20,fontWeight:700,color:T.text}}>{bac} <span style={{fontSize:13,color:T.textSub}}>mL</span></div>
-            <button onClick={()=>stepBac(1)} style={{width:40,height:40,borderRadius:10,border:"none",background:T.elevated,color:T.text,fontSize:22,cursor:"pointer"}}>+</button>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <NumInput label="Peptide powder (mg)" placeholder="10" value={t_mg} onChange={e=>setTMg(e.target.value)}/>
+          <NumInput label="BAC water added (mL)" placeholder="2" value={t_bac} onChange={e=>setTBac(e.target.value)}/>
+        </div>
+        {t_result!==null && (
+          <div style={{marginTop:12,background:T.elevated,borderRadius:10,padding:"10px 14px"}}>
+            {resultBox("Concentration", ((parseFloat(t_mg)||0)*1000/(parseFloat(t_bac)||1)).toFixed(1), "mcg/mL")}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"10px 0 4px"}}>
+              <span style={{fontSize:13,color:T.textSub}}>Dose per 10 IU draw</span>
+              <span style={{fontSize:30,fontWeight:900,color:T.accent,letterSpacing:-1}}>
+                {t_result>=1000?(t_result/1000).toFixed(3)+" mg":t_result.toFixed(1)+" mcg"}
+              </span>
+            </div>
           </div>
-        </div>
-        <div style={{marginTop:12}}><NumInput label="Syringe (IU)" placeholder="100" value={iu} onChange={e=>setIu(e.target.value)}/></div>
-        <Btn style={{width:"100%",justifyContent:"center",marginTop:16}} icon="flask" onClick={calc}>Calculate</Btn>
+        )}
+        {!t_result && <p style={{fontSize:12,color:T.textMute,margin:"10px 0 0",textAlign:"center"}}>Enter powder amount and BAC water to see dose per 10 IU.</p>}
       </Card>
-      {result && (
-        <Card style={{borderColor:`${T.accent}44`}}>
-          <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${T.border}`}}>
-            <span style={{color:T.textSub}}>Concentration</span>
-            <span style={{color:T.text,fontWeight:600}}>{result.cpm.toFixed(0)} mcg/mL</span>
+
+      {/* ── BOTTOM: Powder + desired dose → BAC water ── */}
+      <Card>
+        <div style={{fontSize:12,fontWeight:800,color:T.amber,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>
+          BAC Water Calculator — how much water to add?
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <NumInput label="Peptide powder (mg)" placeholder="10" value={b_mg} onChange={e=>setBMg(e.target.value)}/>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            <label style={{fontSize:11,fontWeight:700,color:T.textSub,letterSpacing:.6,textTransform:"uppercase"}}>Dose Unit</label>
+            <div style={{display:"flex",height:42,borderRadius:10,overflow:"hidden",border:`1.5px solid ${T.border}`}}>
+              {["mcg","mg"].map(u=>(
+                <button key={u} onClick={()=>setBUnit(u)}
+                  style={{flex:1,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,
+                    background:b_unit===u?T.amber:"transparent",
+                    color:b_unit===u?"#000":T.textSub}}>
+                  {u}
+                </button>
+              ))}
+            </div>
           </div>
-          <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${T.border}`}}>
-            <span style={{color:T.textSub}}>Volume</span>
-            <span style={{color:T.text,fontWeight:600}}>{result.ml.toFixed(3)} mL</span>
+        </div>
+        <div style={{marginTop:10}}>
+          <NumInput label={`Desired dose per 10 IU (${b_unit})`}
+            placeholder={b_unit==="mcg"?"e.g. 250":"e.g. 0.25"}
+            value={b_dose} onChange={e=>setBDose(e.target.value)}/>
+        </div>
+        {b_result!==null && b_result>0 && (
+          <div style={{marginTop:12,background:"rgba(255,214,10,.08)",borderRadius:10,padding:"10px 14px",border:"1px solid rgba(255,214,10,.2)"}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.amber,letterSpacing:.6,textTransform:"uppercase",marginBottom:4}}>Add this much BAC water</div>
+            <div style={{fontSize:30,fontWeight:900,color:T.amber,letterSpacing:-1}}>
+              {b_result.toFixed(2)} <span style={{fontSize:14,color:T.textSub}}>mL</span>
+            </div>
+            <div style={{fontSize:12,color:T.textSub,marginTop:4}}>
+              Every 10 IU draw = {b_unit==="mcg"?parseFloat(b_dose).toFixed(1)+" mcg":(parseFloat(b_dose)*1000).toFixed(1)+" mcg"}
+            </div>
           </div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"12px 0 4px"}}>
-            <span style={{color:T.textSub}}>Draw to</span>
-            <span style={{fontSize:32,fontWeight:900,color:T.accent}}>{result.iuNeeded.toFixed(1)} <span style={{fontSize:14,color:T.textSub}}>IU</span></span>
-          </div>
-        </Card>
-      )}
+        )}
+        {!b_result && <p style={{fontSize:12,color:T.textMute,margin:"10px 0 0",textAlign:"center"}}>Enter powder amount and desired dose to see how much BAC water to add.</p>}
+      </Card>
+
     </div>
   );
 };
@@ -928,14 +981,17 @@ const Calendar = ({vials,entries}) => {
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
           {days.map((day,i)=>{
             const ymd=toYMD(day), isToday=ymd===todayYMD, logs=byDay[ymd]||[], sel=selDay===ymd;
-            const dots=[...new Map(logs.map(e=>[e.vial_id||e.vial_name,e.vial_dot])).entries()];
+            const dots=[...new Map(logs.map(e=>[e.vial_id||e.vial_name,{dot:e.vial_dot,name:e.vial_name}])).entries()].map(([k,v])=>({k,dot:v.dot,rainbow:v.name&&v.name.toLowerCase().includes("glow")}));
             return (
               <button key={ymd} onClick={()=>{setSelDay(ymd);setDayModal(true);}}
                 style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"6px 2px",borderRadius:9,border:`1.5px solid ${sel?T.accent:isToday?"rgba(79,158,255,.4)":"transparent"}`,background:sel?T.accentDim:isToday?"rgba(79,158,255,.07)":"transparent",cursor:"pointer"}}>
                 <span style={{fontSize:9,fontWeight:700,color:T.textSub}}>{"SMTWTFS"[i]}</span>
                 <span style={{fontSize:15,fontWeight:isToday?900:600,color:isToday?T.accent:T.text}}>{day.getDate()}</span>
                 <div style={{display:"flex",flexWrap:"wrap",justifyContent:"center",gap:2,minHeight:12}}>
-                  {dots.slice(0,4).map(([k,dot])=><span key={k} style={{width:6,height:6,borderRadius:"50%",background:dot||T.accent}}/>)}
+                  {dots.slice(0,4).map(d=>d.rainbow
+                    ? <span key={d.k} style={{width:6,height:6,borderRadius:"50%",background:"linear-gradient(135deg,#ff453a,#30d158,#4f9eff)",display:"inline-block"}}/>
+                    : <span key={d.k} style={{width:6,height:6,borderRadius:"50%",background:d.dot||T.accent,display:"inline-block"}}/>
+                  )}
                 </div>
               </button>
             );
@@ -991,13 +1047,34 @@ const Calendar = ({vials,entries}) => {
           if(hoursSince < 0) return;
           const remaining = activeAt(+e.dose_mcg, hl, hoursSince);
           if(remaining < 0.01) return; // below 0.01 mcg = effectively cleared
-          const key = e.vial_id || name;
-          if(!activeMap[key]) activeMap[key] = {name, dot:e.vial_dot, hl, hlType, active:0, lastDose:0};
-          activeMap[key].active += remaining;
-          if(+e.dose_mcg > activeMap[key].lastDose) activeMap[key].lastDose = +e.dose_mcg;
+          // Expand GLOW Blend into component peptides
+          // GLOW = BPC-157 (10mg) + TB-500 (10mg) + GHK-Cu (50mg) = 70mg total
+          // Dose is split proportionally by mass
+          const isGlow = name.toLowerCase().includes("glow");
+          if(isGlow){
+            // Split GLOW into components by mass fraction (10+10+50=70mg total)
+            const components = [
+              {cname:"BPC-157 (GLOW)",  dot:"#4caf72", frac:10/70, hlh:4,   hlType:"short"},
+              {cname:"TB-500 (GLOW)",   dot:"#1a7a3c", frac:10/70, hlh:168, hlType:"long"},
+              {cname:"GHK-Cu (GLOW)",   dot:"#2255cc", frac:50/70, hlh:1.5, hlType:"short"},
+            ];
+            components.forEach(c=>{
+              const compDose = +e.dose_mcg * c.frac;
+              const compRem = activeAt(compDose, c.hlh, hoursSince);
+              if(compRem < 0.01) return;
+              if(!activeMap[c.cname]) activeMap[c.cname] = {name:c.cname, dot:c.dot, hl:c.hlh, hlType:c.hlType, active:0, lastDose:0};
+              activeMap[c.cname].active += compRem;
+              if(compDose > activeMap[c.cname].lastDose) activeMap[c.cname].lastDose = compDose;
+            });
+          } else {
+            const key = e.vial_id || name;
+            if(!activeMap[key]) activeMap[key] = {name, dot:e.vial_dot, hl, hlType, active:0, lastDose:0};
+            activeMap[key].active += remaining;
+            if(+e.dose_mcg > activeMap[key].lastDose) activeMap[key].lastDose = +e.dose_mcg;
+          }
         });
 
-        const activeList = Object.values(activeMap).sort((a,b)=>b.active-a.active);
+        const activeList = Object.values(activeMap).filter(a=>a.active>=0.01).sort((a,b)=>b.active-a.active);
         if(!activeList.length) return null;
 
         return (
