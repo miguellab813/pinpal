@@ -1,0 +1,9 @@
+{
+  "name": "Pinpal",
+  "short_name": "Pinpal",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1416",
+  "theme_color": "#0f1416",
+  "icons": [{ "src": "apple-touch-icon.png", "sizes": "512x512", "type": "image/png" }]
+}

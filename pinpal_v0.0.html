@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pinpal v0.0</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pinpal">
+<meta name="theme-color" content="#0f1416">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<style>
+:root{
+  --bg:#f4f6f6; --card:#ffffff; --text:#14191b; --muted:#66727a; --line:#e2e7e9;
+  --accent:#0f9d8a; --accent-ink:#ffffff; --chip:#eef2f3; --warn:#c77700; --bad:#c43c3c;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f1416; --card:#182024; --text:#eef3f4; --muted:#93a1a8; --line:#253037;
+    --accent:#2cc7b0; --accent-ink:#06211d; --chip:#212b30; --warn:#f0a63a; --bad:#ff6b6b;
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);
+  font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif}
+body{padding:env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom))}
+main{max-width:520px;margin:0 auto}
+header{display:flex;align-items:center;gap:10px;padding:14px 0 10px}
+header h1{font-size:24px;margin:0;font-weight:750;letter-spacing:-.02em;flex:1}
+#sync{font-size:13px;color:var(--muted)}
+.iconbtn{border:0;background:var(--chip);color:var(--text);width:36px;height:36px;border-radius:50%;font-size:17px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin:12px 0}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 10px;font-weight:650}
+.vials{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.vial{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;border:2px solid transparent;
+  background:var(--chip);color:var(--text);border-radius:14px;padding:10px 12px;font:inherit;min-height:66px}
+.vial[aria-pressed="true"]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--card))}
+.vial .top{display:flex;align-items:center;gap:7px;font-weight:650;font-size:15px;line-height:1.2}
+.vial .sub{font-size:12.5px;color:var(--muted)}
+.vial .sub.low{color:var(--warn);font-weight:600}
+.bar{height:4px;width:100%;background:var(--line);border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.bar i.low{background:var(--warn)}
+.dot{width:11px;height:11px;border-radius:50%;flex:none;display:inline-block;box-shadow:0 0 0 1px rgba(0,0,0,.15) inset}
+.dot.diamond{border-radius:2px;transform:rotate(45deg) scale(.85)}
+.row{display:flex;align-items:center;gap:10px}
+.stepper{display:flex;align-items:center;justify-content:center;gap:14px;margin:16px 0 4px}
+.stepper button{width:52px;height:52px;border-radius:50%;border:0;background:var(--chip);color:var(--text);font-size:26px;font-weight:500}
+.stepper .val{text-align:center;min-width:120px}
+.stepper input{width:110px;font-family:inherit;font-weight:700;font-size:40px;line-height:1;text-align:center;border:0;background:transparent;color:var(--text);padding:0}
+.stepper input:focus{outline:none}
+.unit{font-size:13px;color:var(--muted);margin-top:2px}
+.calc{text-align:center;color:var(--muted);font-size:14px;margin-bottom:14px}
+.calc b{color:var(--text)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1.5px solid var(--line);background:transparent;color:var(--text);border-radius:999px;padding:7px 12px;font:inherit;font-size:14px}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.chip .hint{font-size:11px;opacity:.8;margin-left:4px}
+.label{font-size:13px;color:var(--muted);margin:14px 0 6px}
+details{margin-top:12px}
+summary{color:var(--muted);font-size:14px;cursor:pointer;list-style:none}
+summary::before{content:"＋ "}
+details[open] summary::before{content:"－ "}
+input[type=datetime-local],textarea{width:100%;font:inherit;font-size:15px;color:var(--text);background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+textarea{min-height:60px;resize:vertical}
+.go{width:100%;margin-top:16px;border:0;border-radius:14px;padding:16px;font:inherit;font-size:17px;font-weight:700;background:var(--accent);color:var(--accent-ink)}
+.go:disabled{opacity:.45}
+.last{font-size:13px;color:var(--muted);text-align:center;margin-top:8px;min-height:18px}
+.seg{display:flex;background:var(--chip);border-radius:10px;padding:3px;margin-bottom:6px}
+.seg button{flex:1;border:0;background:transparent;color:var(--muted);font:inherit;font-size:14px;padding:6px;border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg button[aria-pressed="true"]{background:var(--card);color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.day{font-size:12.5px;color:var(--muted);font-weight:650;margin:14px 0 4px}
+.dose{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.dose:last-child{border-bottom:0}
+.dose .mid{flex:1;min-width:0}
+.dose .nm{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dose .meta{font-size:12.5px;color:var(--muted)}
+.dose .amt{text-align:right;font-weight:650;font-size:15px}
+.dose .amt small{display:block;font-weight:400;font-size:12px;color:var(--muted)}
+.pending{color:var(--warn)!important}
+.empty{color:var(--muted);font-size:14px;padding:12px 0;text-align:center}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(150%);
+  background:var(--text);color:var(--bg);padding:12px 14px 12px 18px;border-radius:14px;display:flex;gap:14px;align-items:center;
+  transition:transform .25s,visibility .25s;visibility:hidden;max-width:calc(100% - 32px);font-size:15px;z-index:9}
+#toast.show{transform:translateX(-50%) translateY(0);visibility:visible}
+#toast button{border:0;background:transparent;color:var(--accent);font:inherit;font-weight:700}
+dialog{border:0;border-radius:18px;background:var(--card);color:var(--text);padding:20px;width:min(340px,90vw)}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+dialog input{width:100%;font-family:inherit;font-weight:600;font-size:22px;text-align:center;letter-spacing:.3em;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--chip);color:var(--text)}
+.demo{font-size:12px;background:var(--warn);color:#000;border-radius:6px;padding:2px 6px;font-weight:700}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Pinpal</h1>
+    <span id="sync">…</span>
+    <button class="iconbtn" id="refresh" aria-label="Refresh">↻</button>
+  </header>
+
+  <section class="card" aria-labelledby="h-log">
+    <h2 id="h-log">Log a dose</h2>
+    <div class="vials" id="vials"></div>
+
+    <div class="stepper">
+      <button id="minus" aria-label="Less">−</button>
+      <div class="val">
+        <input id="iu" type="number" inputmode="decimal" min="0" step="1" aria-label="Dose in IU">
+        <div class="unit">IU (units, U-100 syringe)</div>
+      </div>
+      <button id="plus" aria-label="More">＋</button>
+    </div>
+    <div class="calc" id="calc"></div>
+
+    <div class="label">Injection site</div>
+    <div class="chips" id="sites"></div>
+
+    <details>
+      <summary>Time, side effects, notes</summary>
+      <div class="label">When</div>
+      <input type="datetime-local" id="when">
+      <div class="label">Side effects</div>
+      <div class="chips" id="effects"></div>
+      <div class="label">Notes</div>
+      <textarea id="notes" placeholder="Optional"></textarea>
+    </details>
+
+    <button class="go" id="go" disabled>Pick a vial</button>
+    <div class="last" id="last"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-recent">
+    <h2 id="h-recent">Recent doses</h2>
+    <div class="seg" id="seg"></div>
+    <div id="recent"></div>
+  </section>
+</main>
+
+<div id="toast" role="status"><span id="toast-msg"></span><button id="toast-btn" hidden>Undo</button></div>
+
+<dialog id="pinDlg">
+  <form method="dialog">
+    <h2 style="text-align:center">Enter PIN</h2>
+    <input id="pinIn" type="password" inputmode="numeric" autocomplete="off">
+    <button class="go" value="ok">Unlock</button>
+  </form>
+</dialog>
+
+<script>
+(() => {
+const SITES = ['Abdomen L','Abdomen R','Thigh L','Thigh R','Glute L','Glute R','Arm L','Arm R'];
+const EFFECTS = ['Redness','Itching','Nausea','Fatigue','Other'];
+const DOTS = {
+  'Light green':'#8fd37f','Dark green':'#1f7a3a','Royal blue':'#2a52be','Orange':'#f28c28',
+  'White':'#ffffff','Grey diamond':'#9aa0a6','Red':'#d93a3a','Yellow':'#f2c94c',
+  'Rainbow':'conic-gradient(#e74c3c,#f1c40f,#2ecc71,#3498db,#9b59b6,#e74c3c)'
+};
+const DEMO = location.protocol === 'file:' || new URLSearchParams(location.search).has('demo');
+const API = 'api/notion';
+const $ = (id) => document.getElementById(id);
+
+// ---------- tiny storage helpers (never break if storage is blocked) ----------
+const store = {
+  get(k, d){ try { const v = localStorage.getItem('pinpal.'+k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v){ try { localStorage.setItem('pinpal.'+k, JSON.stringify(v)); } catch {} },
+};
+
+const S = {
+  vials: [], doses: [], queue: store.get('queue', []),
+  sel: store.get('sel', null), iu: null, site: null, se: [], filter: 'all', whenTouched: false,
+};
+
+// ---------- math ----------
+const strength = (v) => v.strength || (v.totalMg && v.bac ? v.totalMg * 1000 / v.bac : null);
+const pctLeft = (v) => {
+  if (v.remMcg != null && v.totalMg) return Math.max(0, Math.min(100, v.remMcg / (v.totalMg * 1000) * 100));
+  if (v.remPct != null) return v.remPct <= 1 ? v.remPct * 100 : v.remPct;
+  return null;
+};
+const dosesLeft = (v) => {
+  const s = strength(v);
+  if (v.remMcg != null && v.stdIU && s) return Math.floor(v.remMcg / (v.stdIU / 100 * s));
+  return v.dosesLeft != null ? Math.floor(v.dosesLeft) : null;
+};
+const isLow = (v) => {
+  if (typeof v.low === 'boolean') return v.low;
+  if (typeof v.low === 'string' && v.low.trim()) return true;
+  const p = pctLeft(v); return p != null && p < 20;
+};
+const fmt = (n, d = 0) => n == null || isNaN(n) ? '–' : Number(n).toLocaleString(undefined, { maximumFractionDigits: d });
+const vialById = (id) => S.vials.find((v) => v.id.replace(/-/g,'') === String(id||'').replace(/-/g,''));
+
+function localISO(d){
+  const p = (n) => String(n).padStart(2,'0');
+  const off = -d.getTimezoneOffset(), s = off >= 0 ? '+' : '-', a = Math.abs(off);
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00${s}${p(a/60|0)}:${p(a%60)}`;
+}
+const toLocalInput = (d) => localISO(d).slice(0,16);
+const todFor = (d) => { const h = d.getHours(); return h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : h < 21 ? 'Evening' : 'Bedtime'; };
+function ago(iso){
+  const ms = Date.now() - new Date(iso).getTime(), m = ms / 60000;
+  if (m < 1) return 'just now'; if (m < 60) return `${m|0}m ago`;
+  const h = m / 60; if (h < 24) return `${h|0}h ago`;
+  const d = h / 24; return d < 2 ? 'yesterday' : `${d|0}d ago`;
+}
+function dayLabel(iso){
+  const d = new Date(iso), t = new Date(); t.setHours(0,0,0,0);
+  const x = new Date(d); x.setHours(0,0,0,0);
+  const diff = Math.round((t - x) / 864e5);
+  if (diff === 0) return 'Today'; if (diff === 1) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
+}
+const timeOf = (iso) => /T/.test(iso) ? new Date(iso).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}) : '';
+
+function dotEl(name){
+  const s = document.createElement('span'); s.className = 'dot' + (name === 'Grey diamond' ? ' diamond' : '');
+  s.style.background = DOTS[name] || 'var(--muted)'; return s;
+}
+
+// ---------- API ----------
+async function api(action, body){
+  if (DEMO) return demoApi(action, body);
+  const r = await fetch(`${API}?action=${action}`, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'Content-Type':'application/json', 'x-pin': store.get('pin','') },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (r.status === 401) { await askPin(); return api(action, body); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(data.error || `Error ${r.status}`); e.status = r.status; throw e; }
+  return data;
+}
+function askPin(){
+  return new Promise((res) => {
+    const dlg = $('pinDlg'); $('pinIn').value = '';
+    dlg.onclose = () => { store.set('pin', $('pinIn').value.trim()); res(); };
+    dlg.showModal();
+  });
+}
+
+// ---------- rendering ----------
+function activeVials(){
+  return S.vials.filter((v) => v.status === 'Reconstituted')
+    .sort((a,b) => (lastDose(b.id)?.date || '').localeCompare(lastDose(a.id)?.date || '') || a.name.localeCompare(b.name));
+}
+function allDoses(){
+  const q = S.queue.map((x) => ({ ...x, pending: true }));
+  return q.concat(S.doses).sort((a,b) => new Date(b.date) - new Date(a.date));
+}
+const lastDose = (vialId) => allDoses().find((d) => d.vialId && vialById(d.vialId)?.id === vialId);
+
+function renderVials(){
+  const box = $('vials'); box.innerHTML = '';
+  const list = activeVials();
+  if (!list.length) { box.innerHTML = '<div class="empty" style="grid-column:1/-1">No reconstituted vials. Mark a vial "Reconstituted" in Notion.</div>'; return; }
+  for (const v of list) {
+    const b = document.createElement('button'); b.className = 'vial'; b.setAttribute('aria-pressed', S.sel === v.id);
+    const top = document.createElement('div'); top.className = 'top'; top.append(dotEl(v.dot), document.createTextNode(v.name));
+    const p = pctLeft(v), low = isLow(v), ld = lastDose(v.id), dl = dosesLeft(v);
+    const sub = document.createElement('div'); sub.className = 'sub' + (low ? ' low' : '');
+    sub.textContent = [p != null ? `${fmt(p)}% left` : null, dl != null ? `${dl} doses` : null, ld ? ago(ld.date) : null].filter(Boolean).join(' · ');
+    const bar = document.createElement('div'); bar.className = 'bar';
+    bar.innerHTML = `<i class="${low ? 'low' : ''}" style="width:${p ?? 0}%"></i>`;
+    b.append(top, sub, bar);
+    b.onclick = () => selectVial(v.id);
+    box.append(b);
+  }
+}
+
+function selectVial(id){
+  S.sel = id; store.set('sel', id);
+  const v = vialById(id);
+  const ld = lastDose(id);
+  S.iu = v?.stdIU || ld?.iu || 10;
+  S.site = nextSite();
+  S.filter = 'vial';
+  render();
+}
+
+function nextSite(){
+  const last = allDoses().find((d) => SITES.includes(d.site));
+  if (!last) return SITES[0];
+  return SITES[(SITES.indexOf(last.site) + 1) % SITES.length];
+}
+
+function renderForm(){
+  const v = vialById(S.sel);
+  const iu = Number(S.iu) || 0;
+  const inp = $('iu'); if (document.activeElement !== inp) inp.value = S.iu ?? '';
+  const s = v ? strength(v) : null;
+  $('calc').innerHTML = v && s
+    ? `= <b>${fmt(iu / 100 * s)} mcg</b> · ${fmt(iu / 100, 2)} mL <span style="opacity:.7">(${fmt(s)} mcg/mL)</span>`
+    : v ? 'Add BAC water + total mg in Notion to see mcg' : '';
+
+  const sug = nextSite();
+  $('sites').innerHTML = '';
+  for (const site of SITES) {
+    const c = document.createElement('button'); c.className = 'chip'; c.setAttribute('aria-pressed', S.site === site);
+    c.textContent = site;
+    if (site === sug) { const h = document.createElement('span'); h.className = 'hint'; h.textContent = '• next'; c.append(h); }
+    c.onclick = () => { S.site = S.site === site ? null : site; renderForm(); };
+    $('sites').append(c);
+  }
+  $('effects').innerHTML = '';
+  for (const e of EFFECTS) {
+    const c = document.createElement('button'); c.className = 'chip'; c.setAttribute('aria-pressed', S.se.includes(e));
+    c.textContent = e; c.type = 'button';
+    c.onclick = () => { S.se = S.se.includes(e) ? S.se.filter((x) => x !== e) : [...S.se, e]; renderForm(); };
+    $('effects').append(c);
+  }
+  if (!S.whenTouched) $('when').value = toLocalInput(new Date());
+
+  const go = $('go');
+  go.disabled = !v || !(iu > 0);
+  go.textContent = v ? `Log ${fmt(iu,1)} IU · ${v.name}` : 'Pick a vial';
+  const ld = v && lastDose(v.id);
+  $('last').textContent = ld ? `Last: ${fmt(ld.iu,1)} IU${ld.site ? ' · ' + ld.site : ''} · ${ago(ld.date)}` : '';
+}
+
+function renderRecent(){
+  const v = vialById(S.sel);
+  const seg = $('seg'); seg.innerHTML = '';
+  const opts = [['all','All']]; if (v) opts.push(['vial', v.name]);
+  if (!v) S.filter = 'all';
+  for (const [k, label] of opts) {
+    const b = document.createElement('button'); b.textContent = label; b.setAttribute('aria-pressed', S.filter === k);
+    b.onclick = () => { S.filter = k; renderRecent(); }; seg.append(b);
+  }
+  seg.style.display = v ? 'flex' : 'none';
+
+  let list = allDoses();
+  if (S.filter === 'vial' && v) list = list.filter((d) => vialById(d.vialId)?.id === v.id);
+  list = list.slice(0, 40);
+  const box = $('recent'); box.innerHTML = '';
+  if (!list.length) { box.innerHTML = '<div class="empty">No doses yet.</div>'; return; }
+  let day = null;
+  for (const d of list) {
+    const lbl = dayLabel(d.date);
+    if (lbl !== day) { day = lbl; const h = document.createElement('div'); h.className = 'day'; h.textContent = lbl; box.append(h); }
+    const vv = vialById(d.vialId);
+    const s = vv ? strength(vv) : null;
+    const mcg = d.mcg ?? (s && d.iu ? d.iu / 100 * s : null);
+    const row = document.createElement('div'); row.className = 'dose';
+    const mid = document.createElement('div'); mid.className = 'mid';
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = vv ? vv.name : (d.title || 'Dose');
+    const meta = document.createElement('div'); meta.className = 'meta' + (d.pending ? ' pending' : '');
+    meta.textContent = [timeOf(d.date), d.site, (d.se||[]).filter((x) => x !== 'None').join(', ') || null, d.pending ? 'not synced yet' : null].filter(Boolean).join(' · ');
+    mid.append(nm, meta);
+    const amt = document.createElement('div'); amt.className = 'amt';
+    amt.innerHTML = `${fmt(d.iu,1)} IU<small>${mcg != null ? fmt(mcg) + ' mcg' : ''}</small>`;
+    row.append(dotEl(vv?.dot), mid, amt);
+    box.append(row);
+  }
+}
+
+function render(){ renderVials(); renderForm(); renderRecent(); }
+
+function setSync(text){ $('sync').innerHTML = (DEMO ? '<span class="demo">DEMO</span> ' : '') + text; }
+
+let toastTimer;
+function toast(msg, undoFn){
+  $('toast-msg').textContent = msg;
+  const b = $('toast-btn'); b.hidden = !undoFn; b.onclick = () => { hideToast(); undoFn(); };
+  $('toast').classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, undoFn ? 7000 : 3000);
+}
+const hideToast = () => $('toast').classList.remove('show');
+
+// ---------- actions ----------
+async function load(){
+  setSync('Syncing…');
+  try {
+    await flushQueue();
+    const data = await api('load');
+    S.vials = data.vials; S.doses = data.doses;
+    store.set('cache', { vials: S.vials, doses: S.doses, at: Date.now() });
+    setSync(S.queue.length ? `${S.queue.length} waiting` : 'Synced');
+  } catch (e) {
+    setSync(navigator.onLine ? 'Sync failed' : 'Offline');
+    if (e.status !== 401) toast(e.message || 'Could not reach Notion');
+  }
+  if (S.sel && !vialById(S.sel)) S.sel = null;
+  if (S.sel && S.iu == null) { const v = vialById(S.sel); S.iu = v?.stdIU || 10; S.site = nextSite(); }
+  render();
+}
+
+async function flushQueue(){
+  while (S.queue.length) {
+    const item = S.queue[0];
+    try {
+      const { dose } = await api('log', item.payload);
+      S.queue.shift(); store.set('queue', S.queue);
+      S.doses.unshift(dose);
+    } catch (e) {
+      if (e.status && e.status < 500 && e.status !== 401) { S.queue.shift(); store.set('queue', S.queue); toast(`Dropped a queued dose: ${e.message}`); }
+      else throw e;
+    }
+  }
+}
+
+async function logDose(){
+  const v = vialById(S.sel); const iu = Number(S.iu);
+  if (!v || !(iu > 0)) return;
+  const when = S.whenTouched && $('when').value ? new Date($('when').value) : new Date();
+  const payload = {
+    vialId: v.id, iu, site: S.site, se: S.se, notes: $('notes').value.trim(),
+    date: localISO(when), tod: todFor(when), title: `${v.name} – ${fmt(iu,1)} IU`,
+  };
+  const go = $('go'); go.disabled = true; go.textContent = 'Saving…';
+  const s = strength(v); const mcg = s ? iu / 100 * s : 0;
+  try {
+    const { dose } = await api('log', payload);
+    S.doses.unshift(dose);
+    if (v.remMcg != null) v.remMcg -= mcg;
+    toast(`Logged ${fmt(iu,1)} IU ${v.name}`, () => undo(dose.id, v, mcg));
+    setSync('Synced');
+  } catch (e) {
+    if (e.status && e.status < 500) { toast(e.message); renderForm(); return; }
+    const tmp = { id: 'tmp-' + Date.now(), payload, vialId: v.id, iu, site: S.site, se: S.se, date: payload.date };
+    S.queue.unshift(tmp); store.set('queue', S.queue);
+    if (v.remMcg != null) v.remMcg -= mcg;
+    toast('Saved on phone — will sync when online', () => { S.queue = S.queue.filter((q) => q.id !== tmp.id); store.set('queue', S.queue); if (v.remMcg != null) v.remMcg += mcg; render(); });
+    setSync(`${S.queue.length} waiting`);
+  }
+  S.se = []; $('notes').value = ''; S.whenTouched = false;
+  S.site = nextSite();
+  store.set('cache', { vials: S.vials, doses: S.doses, at: Date.now() });
+  render();
+}
+
+async function undo(id, v, mcg){
+  try {
+    await api('undo', { id });
+    S.doses = S.doses.filter((d) => d.id !== id);
+    if (v && v.remMcg != null) v.remMcg += mcg;
+    toast('Removed'); render();
+  } catch (e) { toast('Undo failed: ' + e.message); }
+}
+
+// ---------- wiring ----------
+$('minus').onclick = () => { S.iu = Math.max(0, (Number(S.iu) || 0) - 1); renderForm(); };
+$('plus').onclick = () => { S.iu = (Number(S.iu) || 0) + 1; renderForm(); };
+$('iu').oninput = (e) => { S.iu = e.target.value; renderForm(); };
+$('when').oninput = () => { S.whenTouched = true; };
+$('go').onclick = logDose;
+$('refresh').onclick = load;
+window.addEventListener('online', load);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });
+setInterval(() => { renderVials(); renderForm(); }, 60000); // keep "2h ago" fresh
+
+// Show cached data instantly, then sync.
+const cache = store.get('cache', null);
+if (cache && !DEMO) { S.vials = cache.vials; S.doses = cache.doses; if (S.sel && vialById(S.sel)) { S.iu = vialById(S.sel).stdIU || 10; S.site = nextSite(); } render(); }
+load();
+
+// ---------- demo data (opens when the file is opened directly or with ?demo) ----------
+function demoApi(action, body){
+  const now = Date.now(), h = 36e5;
+  if (!demoApi.db) demoApi.db = {
+    vials: [
+      { id:'11111111-1111-1111-1111-111111111111', name:'BPC-157 #2', status:'Reconstituted', totalMg:10, bac:2, remMcg:6200, stdIU:5, dot:'Light green' },
+      { id:'22222222-2222-2222-2222-222222222222', name:'Tirzepatide #1', status:'Reconstituted', totalMg:5, bac:1, remMcg:3750, stdIU:5, dot:'Royal blue' },
+      { id:'33333333-3333-3333-3333-333333333333', name:'CJC-1295 no DAC + Ipa #1', status:'Reconstituted', totalMg:10, bac:2, remMcg:1300, stdIU:10, dot:'Rainbow' },
+      { id:'44444444-4444-4444-4444-444444444444', name:'NAD+ #1', status:'Reconstituted', totalMg:500, bac:5, remMcg:260000, stdIU:20, dot:'Orange' },
+      { id:'55555555-5555-5555-5555-555555555555', name:'TB-500 #1', status:'Powder', totalMg:10, bac:null, remMcg:10000, stdIU:10, dot:'Dark green' },
+    ],
+    doses: [
+      { id:'d1', date:new Date(now-3*h).toISOString(), iu:10, site:'Abdomen L', vialId:'33333333-3333-3333-3333-333333333333', se:[] },
+      { id:'d2', date:new Date(now-5*h).toISOString(), iu:5, site:'Thigh R', vialId:'11111111-1111-1111-1111-111111111111', se:[] },
+      { id:'d3', date:new Date(now-27*h).toISOString(), iu:10, site:'Thigh L', vialId:'33333333-3333-3333-3333-333333333333', se:['Redness'] },
+      { id:'d4', date:new Date(now-29*h).toISOString(), iu:5, site:'Abdomen R', vialId:'11111111-1111-1111-1111-111111111111', se:[] },
+      { id:'d5', date:new Date(now-4*24*h).toISOString(), iu:5, site:'Abdomen L', vialId:'22222222-2222-2222-2222-222222222222', se:['Nausea'] },
+      { id:'d6', date:new Date(now-6*24*h).toISOString(), iu:20, site:'Glute L', vialId:'44444444-4444-4444-4444-444444444444', se:[] },
+    ],
+  };
+  const db = demoApi.db;
+  return new Promise((res) => setTimeout(() => {
+    if (action === 'load') return res(JSON.parse(JSON.stringify(db)));
+    if (action === 'log') { const d = { id:'d'+now, date:body.date, iu:body.iu, site:body.site, se:body.se, vialId:body.vialId, title:body.title };
+      db.doses.unshift(d); const v = db.vials.find((x) => x.id === body.vialId); v.remMcg -= body.iu/100*(v.totalMg*1000/v.bac); return res({ dose: d }); }
+    if (action === 'undo') { db.doses = db.doses.filter((d) => d.id !== body.id); return res({ ok:true }); }
+  }, 250));
+}
+})();
+</script>
+</body>
+</html>

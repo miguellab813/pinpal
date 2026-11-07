@@ -1,0 +1,6 @@
+{
+  "framework": null,
+  "buildCommand": "",
+  "outputDirectory": ".",
+  "rewrites": [{ "source": "/", "destination": "/pinpal_v0.0.html" }]
+}
